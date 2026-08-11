@@ -1,0 +1,88 @@
+{
+  "manifest_version": 3,
+  "name": "ScanCart.ai - AI Product Authenticity",
+  "version": "1.0.0",
+  "description": "Know if a product is REAL in 6 seconds. Fake detection for Amazon, Flipkart, Myntra, Nykaa & Meesho.",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "tabs",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://*.amazon.in/*",
+    "https://*.amazon.com/*",
+    "https://*.flipkart.com/*",
+    "https://*.myntra.com/*",
+    "https://*.nykaa.com/*",
+    "https://*.meesho.com/*",
+    "http://localhost:5173/*",
+    "http://localhost:4000/*",
+    "https://scancart.ai/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "background": {
+    "service_worker": "service-worker-loader.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "js": [
+        "assets/content.js-loader-DnkSbh66.js"
+      ],
+      "matches": [
+        "https://*.amazon.in/*",
+        "https://*.amazon.com/*",
+        "https://*.flipkart.com/*",
+        "https://*.myntra.com/*",
+        "https://*.nykaa.com/*",
+        "https://*.meesho.com/*",
+        "http://localhost:5173/*",
+        "https://scancart.ai/*"
+      ],
+      "css": [
+        "src/content/styles.css"
+      ]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "resources": [
+        "icons/*"
+      ],
+      "use_dynamic_url": false
+    },
+    {
+      "matches": [
+        "http://localhost:5173/*",
+        "https://*.amazon.com/*",
+        "https://*.amazon.in/*",
+        "https://*.flipkart.com/*",
+        "https://*.meesho.com/*",
+        "https://*.myntra.com/*",
+        "https://*.nykaa.com/*",
+        "https://scancart.ai/*"
+      ],
+      "resources": [
+        "assets/constants-DtAPD_rO.js",
+        "assets/content.js-RBDb3VNA.js"
+      ],
+      "use_dynamic_url": false
+    }
+  ]
+}
