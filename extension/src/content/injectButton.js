@@ -47,7 +47,7 @@ function _announce() {
  * Draw the same panel inside the toolbar popup (its main screen).
  * The popup passes what the page's script read: product, page URL, tab id and the page's score.
  */
-export function mountInline(container, { product = null, url = null, tabId = null, status = null } = {}) {
+export function mountInline(container, { product = null, url = null, tabId = null, status = null, mobile = false } = {}) {
   _productData = product
   _pageUrl = url
   _tabId = tabId
@@ -58,6 +58,7 @@ export function mountInline(container, { product = null, url = null, tabId = nul
   _shadowRoot.getElementById('sc-fab')?.remove()
   _shadowRoot.getElementById('sc-backdrop')?.remove()
   _shadowRoot.getElementById('sc-panel').classList.add('sc-inline')
+  if (mobile) _shadowRoot.getElementById('sc-panel').classList.add('sc-mobile')   // Android app: Figma phone layout
   _setupOptions()
   _renderStrip()
   return {
@@ -112,6 +113,7 @@ const P = {
   chevron: `<path d="m9 18 6-6-6-6"/>`,
   store:   `<path d="m2 7 4.41-4.41A2 2 0 017.83 2h8.34a2 2 0 011.42.59L22 7"/><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><path d="M15 22v-4a2 2 0 00-2-2h-2a2 2 0 00-2 2v4"/><path d="M2 7h20"/>`,
   zap:     `<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>`,
+  alert:   `<path d="m21.73 18-8-14a2 2 0 00-3.46 0l-8 14A2 2 0 004 21h16a2 2 0 001.73-3"/><path d="M12 9v4M12 17h.01"/>`,
 }
 
 /* ═══════════════════════════════════════════════
@@ -376,6 +378,29 @@ const _CSS = `
 .sc-score-strip .n { width: 42px; height: 42px; border-radius: 12px; color: #fff; font-size: 18px; font-weight: 900; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .sc-score-strip .w { font-size: 13.5px; font-weight: 800; }
 .sc-score-strip .s { font-size: 11px; color: #64748B; }
+
+/* ── Warning signs + trusted stores button ── */
+.sc-warns { background: #fff; border: 1px solid #E2E8F0; border-radius: 16px; padding: 2px 12px; }
+.sc-warn { display: flex; gap: 10px; align-items: flex-start; padding: 9px 0; font-size: 12px; color: #334155; line-height: 1.45; }
+.sc-warn + .sc-warn { border-top: 1px solid #F1F5F9; }
+.sc-warn-ic { width: 24px; height: 24px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.sc-trusted-btn { width: 100%; height: 42px; border: 0; border-radius: 999px; background: linear-gradient(90deg, #2563EB, #3B82F6); color: #fff; font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer; box-shadow: 0 6px 16px rgba(37,99,235,.28); }
+
+/* ── Android app (Figma phone layout): checks and stores each in ONE card with dividers ── */
+#sc-panel.sc-mobile .sc-opt-list { gap: 0; background: #fff; border: 1px solid #E2E8F0; border-radius: 16px; overflow: hidden; box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 4px 14px rgba(15,23,42,.05); }
+#sc-panel.sc-mobile .sc-opt-btn { border: 0; border-radius: 0; box-shadow: none; padding: 10px 12px; gap: 11px; }
+#sc-panel.sc-mobile .sc-opt-btn + .sc-opt-btn { border-top: 1px solid #F1F5F9; }
+#sc-panel.sc-mobile .sc-opt-icon { width: 32px; height: 32px; border-radius: 10px; }
+#sc-panel.sc-mobile .sc-opt-icon svg { width: 16px; height: 16px; }
+#sc-panel.sc-mobile .sc-opt-title { font-size: 12.5px; }
+#sc-panel.sc-mobile .sc-opt-desc { font-size: 10.5px; }
+#sc-panel.sc-mobile #sc-store-grid { gap: 0; background: #fff; border: 1px solid #E2E8F0; border-radius: 16px; overflow: hidden; box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 4px 14px rgba(15,23,42,.05); }
+#sc-panel.sc-mobile #sc-store-grid .sc-alt-item { border: 0; border-radius: 0; box-shadow: none; padding: 9px 11px; }
+#sc-panel.sc-mobile #sc-store-grid .sc-alt-item + .sc-alt-item { border-top: 1px solid #F1F5F9; }
+#sc-panel.sc-mobile .sc-store-rate { width: 40px; height: 40px; border-radius: 11px; font-size: 13.5px; }
+#sc-panel.sc-mobile .sc-prod { margin: 12px 14px; }
+#sc-panel.sc-mobile .sc-result { padding: 12px 14px; }
+#sc-panel.sc-mobile .sc-score-strip { margin: 0 14px 10px; }
 .sc-section-lbl { font-size: 10.5px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: .12em; }
 `
 
@@ -531,6 +556,7 @@ async function _handleOption(option) {
       _setupOptions()
     })
     if (option === 'alternatives') _setupAltCards()
+    _shadowRoot.querySelector('.sc-trusted-btn')?.addEventListener('click', e => { e.stopPropagation(); _handleOption('alternatives') })
     if (option === 'price') _setupWatch()
     // Wire up data-href clicks (price best-found card, etc.) via event delegation
     cnt.querySelectorAll('[data-href]:not(.sc-alt-grid [data-href])').forEach(el => {
@@ -579,8 +605,9 @@ function _rHead(icon, color, bg, title, sub, chip, cc) {
 }
 function _trustBar(score) {
   const s = Math.min(100,Math.max(0,score||0))
-  const c = s>=70?'#16A34A':s>=40?'#CA8A04':'#DC2626'
-  const l = s>=70?'AUTHENTIC':s>=40?'CAUTION':'HIGH RISK'
+  // same cut-offs as the button / bubble: 70+ safe · 45–69 caution · below 45 do not buy
+  const c = s>=70?'#16A34A':s>=45?'#CA8A04':'#DC2626'
+  const l = s>=70?'AUTHENTIC':s>=45?'CAUTION':'HIGH RISK'
   return `<div class="sc-trust-bar"><div class="sc-trust-labels"><span style="color:#94A3B8;font-size:11px">Trust Score</span><span style="color:${c};font-size:11px;font-weight:700">${s}/100 — ${l}</span></div><div class="sc-trust-track"><div class="sc-trust-fill" style="width:${s}%;background:${c}"></div></div></div>`
 }
 function _stats(...items) {
@@ -877,6 +904,19 @@ function _setupAltCards() {
   }
 }
 
+/* ── Warning signs (from the backend's verdict evidence) for scores below "safe" ── */
+function _warnList(r, score) {
+  if (score >= 70) return ''
+  const v = (r.aiSummary || []).find(s => s.id === 'verdict')
+  const pts = (v?.points || []).slice(1)
+    .filter(p => !/could not run|Mixed signals|No significant negative/i.test(p))
+    .map(p => p.replace(/^[a-zA-Z]+:\s*/, ''))
+    .slice(0, 3)
+  if (!pts.length) return ''
+  const c = score >= 45 ? '#D97706' : '#DC2626', bg = score >= 45 ? '#FFFBEB' : '#FEF2F2'
+  return `<div class="sc-warns">${pts.map(p => `<div class="sc-warn"><span class="sc-warn-ic" style="background:${bg}">${_ic(P.alert, 13, c)}</span><span>${_esc(p)}</span></div>`).join('')}</div>`
+}
+
 /* ── Summary ── */
 function _summaryResult(r) {
   const score = r.trustScore || 0
@@ -905,16 +945,18 @@ function _summaryResult(r) {
     : `Trust Score: ${score}/100. ${score>=70?'Product appears genuine.':score>=40?'Proceed with caution.':'High risk — avoid.'} ${sellerWarning}`
 
   return `
-    ${_rHead(P.shield,c,c+'1A',score >= 70 ? 'Safe to buy' : score >= 45 ? 'Buy with caution' : 'Do not buy',`${r.checksCompleted ?? 6} of ${r.checksTotal ?? 6} checks completed`,`${score}/100`,c)}
+    ${_rHead(score >= 70 ? P.shield : P.alert,c,c+'1A',score >= 70 ? 'Safe to buy' : score >= 45 ? 'Buy with caution' : 'Do not buy',`${r.checksCompleted ?? 6} of ${r.checksTotal ?? 6} checks completed`,`${score}/100`,c)}
     ${_trustBar(score)}
     ${_stats([fake == null ? '—' : `${fake}%`,'Fake Reviews',fake == null ? null : reviewsOK?'#16A34A':'#DC2626'],[r.sellerRating == null ? '—' : `${r.sellerRating}/5`,'Seller',null],[hasSavings?`₹${(r.savings||0).toLocaleString('en-IN')}`:'Fair','Price','#16A34A'])}
+    ${_warnList(r, score)}
     ${_aiBox(insight)}
     <div class="sc-sum-badges">
       <span class="sc-sum-badge" style="color:${reviewsOK?'#16A34A':'#DC2626'};background:${reviewsOK?'rgba(22,163,74,0.1)':'rgba(220,38,38,0.1)'}">Reviews ${reviewsOK?'OK':'Suspicious'}</span>
       <span class="sc-sum-badge" style="color:${sellerClr};background:${sellerBg}">${sellerBadge}</span>
       <span class="sc-sum-badge" style="color:${hasSavings?'#16A34A':'#CA8A04'};background:${hasSavings?'rgba(22,163,74,0.1)':'rgba(234,179,8,0.1)'}">${hasSavings?'Save Money':'Fair Price'}</span>
     </div>
-    ${_verdict(score>=70?`Safe to buy — green light from ${_aiOn ? 'our AI' : 'ScanCart’s checks'}`:score>=40?'Proceed with caution — verify key details':'Avoid this product — multiple risk signals',score>=70?'green':score>=40?'yellow':'red')}
+    ${score < 45 ? '<button class="sc-trusted-btn">See trusted stores for this product</button>' : ''}
+    ${_verdict(score>=70?`Safe to buy — green light from ${_aiOn ? 'our AI' : 'ScanCart’s checks'}`:score>=45?'Proceed with caution — verify key details':'Avoid this product — multiple risk signals',score>=70?'green':score>=45?'yellow':'red')}
   `
 }
 
