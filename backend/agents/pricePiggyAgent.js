@@ -11,7 +11,9 @@ import { productKeyFor, getHistory, summarise, recordPrice } from '../services/p
 // ScanCart's own tracked prices for this exact listing (Firestore or the local store).
 async function getPriorPriceStats(key, windowDays = 30) {
   const s = summarise(await getHistory(key, { days: windowDays }))
-  return s ? { priorLow: s.low, priorHigh: s.high, priorAvg: s.avg, sampleCount: s.count, windowDays } : null
+  if (!s) return null
+  const spanDays = (Date.now() - s.firstSeen) / 86400000
+  return { priorLow: s.low, priorHigh: s.high, priorAvg: s.avg, sampleCount: s.count, windowDays, spanDays }
 }
 
 const TIMEOUT = parseInt(process.env.AGENT_TIMEOUT) || 10000
@@ -69,13 +71,17 @@ export async function pricePiggyAgent({ url, productData }) {
       ? Math.round((priorStats.priorLow - currentPrice) / priorStats.priorLow * 100)
       : 0
     const isNewLow = currentPrice <= priorStats.priorLow
-    const discountClaimHonest = claimedDiscountPercent == null
+    // Only judge a sale as fake with a real history: 3+ saved prices spread over 7+ days.
+    // (One earlier price from a minute ago says nothing about whether the "75% off" is real.)
+    const enoughHistory = priorStats.sampleCount >= 3 && priorStats.spanDays >= 7
+    const discountClaimHonest = claimedDiscountPercent == null || !enoughHistory
       ? null
       : genuineDiscountPercent >= claimedDiscountPercent * 0.5
 
     priorPriceVerdict = {
       ...priorStats,
       isNewLow,
+      enoughHistory,
       claimedDiscountPercent,
       genuineDiscountPercent,
       discountClaimHonest,
@@ -86,7 +92,7 @@ export async function pricePiggyAgent({ url, productData }) {
       local.priceSuspicious = true
       local.priceScore = Math.min(local.priceScore, 30)
       local.priceFair = `Claimed ${claimedDiscountPercent}% off MRP, but ScanCart has tracked this exact listing at Rs.${priorStats.priorLow}-Rs.${priorStats.priorHigh} over the last ${priorStats.windowDays} days — today's price is not meaningfully lower.`
-    } else if (isNewLow) {
+    } else if (isNewLow && enoughHistory) {
       local.priceScore = Math.max(local.priceScore, 85)
       local.priceFair = `Lowest price ScanCart has recorded for this listing in ${priorStats.windowDays} days (previous low: Rs.${priorStats.priorLow}).`
     }

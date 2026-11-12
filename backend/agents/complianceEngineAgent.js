@@ -113,7 +113,8 @@ function runLocalChecks({ seller = {}, price = {}, category, signals = {} }) {
 
   checks.push(signals.hasReturnPolicyText
     ? pass(RULES.RETURN_REFUND, 'returnPolicy', 'Return/refund/exchange policy text detected on the page.')
-    : breach(RULES.RETURN_REFUND, 'returnPolicy', 'high', 'No return/refund/exchange policy text detected on the listing page.'))
+    // Not finding the words on this page is weak evidence (shops often keep the policy on its own page) → medium, no score cap
+    : breach(RULES.RETURN_REFUND, 'returnPolicy', 'medium', 'No return/refund/exchange policy text found on this page — it may be on a separate page of the shop.'))
 
   const warrantyRelevant = WARRANTY_CATEGORIES.includes(category)
   checks.push(!warrantyRelevant
@@ -148,6 +149,9 @@ function buildPriorPriceCheck(price = {}) {
     return price.mrp > 0
       ? unknownCheck(RULES.PRIOR_PRICE, 'priorPrice', 'MRP/strikethrough price captured but no prior-price history yet for this exact listing (first time scanned) — discount claim not yet verifiable.')
       : unknownCheck(RULES.PRIOR_PRICE, 'priorPrice', 'No MRP/strikethrough price detected on this listing — discount-claim honesty cannot be evaluated.')
+  }
+  if (v.enoughHistory === false) {
+    return unknownCheck(RULES.PRIOR_PRICE, 'priorPrice', `ScanCart has ${v.sampleCount} saved price(s) for this listing over less than 7 days — too early to judge the discount claim.`)
   }
   if (v.discountClaimHonest === false) {
     // A small "permanent discount" is common marketing — flag it, but only a big fake sale is a high-severity breach

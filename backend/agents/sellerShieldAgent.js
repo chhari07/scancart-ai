@@ -288,7 +288,10 @@ function localSellerAnalysis(d = {}) {
   if (suspiciousName) { sellerVerified = false; sellerType = 'suspicious' }
 
   // No price on the page → no price signal (a price of 0 used to read as "critical").
-  const priceValidation = price > 0 ? validatePrice(price, name, d.mrpPrice || d.mrp || 0) : { risk: 'unknown' }
+  // A brand or a known seller with an inflated MRP is a price-honesty issue, not a counterfeit sign —
+  // so the "price under a quarter of MRP" check only counts for sellers we can't vouch for.
+  const vouched = sellerVerified || sellerType === 'established_3p'
+  const priceValidation = price > 0 ? validatePrice(price, name, vouched ? 0 : (d.mrpPrice || d.mrp || 0)) : { risk: 'unknown' }
   const priceSuspicious = priceValidation.risk === 'critical' || priceValidation.risk === 'high'
 
   let sellerTrustScore =
