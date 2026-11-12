@@ -1,0 +1,30 @@
+# Render Blueprint — ScanCart backend as a second live server.
+# Render → New → Blueprint → pick this repo → Apply. Redeploys on every push to main.
+# Main backend for the extension stays https://scancart-api.vercel.app until Render is tested.
+services:
+  - type: web
+    name: scancart-api
+    runtime: node
+    plan: free            # free sleeps after 15 min idle (first request 30–60 s); "starter" never sleeps
+    region: singapore     # closest Render region to India
+    rootDir: backend
+    buildCommand: npm ci --omit=dev
+    startCommand: node server.js
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: FRONTEND_URL
+        value: https://scancart-ai.vercel.app
+      - key: SCANCART_DATA_DIR
+        value: /tmp/scancart-data   # price history is temporary on Render too (no paid disk)
+      # Secrets — Render asks for these when you apply the Blueprint (leave empty for basic rules only)
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false
