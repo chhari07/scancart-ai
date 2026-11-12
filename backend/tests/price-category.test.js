@@ -27,3 +27,9 @@ test('keywords match whole words only', () => {
   assert.equal(detectCategory('Adjustable Table Mount'), 'accessory')
   assert.notEqual(detectCategory('Black cotton kurta'), 'appliances')
 })
+
+import { calculateTrustScore } from '../utils/trustScore.js'
+test('critical counterfeit risk from an unverified seller lands in "Do not buy" (< 45)', () => {
+  const s = calculateTrustScore({ review: { fakePercent: 10 }, rating: { ratingCredibilityScore: 80 }, seller: { sellerVerified: false, counterfeitRisk: 'critical', sellerTrustScore: 60 }, price: { priceScore: 80 }, quality: { qualityScore: 80 }, compliance: { complianceScore: 90 } })
+  assert.ok(s < 45, String(s))
+})

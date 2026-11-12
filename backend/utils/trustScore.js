@@ -15,7 +15,8 @@ export const FUSION_WEIGHTS = {
  *   complianceScore = complianceEngine's score                  (weight 20%)
  *
  * Hard floors (each a ceiling clamp; the most punitive one wins — they do not average away):
- *   - unverified seller + high/critical counterfeit risk → capped at 49
+ *   - unverified seller + critical counterfeit risk      → capped at 40 ("Do not buy")
+ *   - unverified seller + high counterfeit risk          → capped at 49
  *   - unverified seller + medium counterfeit risk        → capped at 64
  *   - 1+ critical compliance breach                       → capped at 39
  *   - 2+ high-severity compliance breaches                → capped at 59
@@ -42,7 +43,9 @@ export function calculateTrustScore({ review = {}, rating = {}, seller = {}, pri
   let trustScore = clamp(Math.round(raw), 0, 100)
 
   // ── Seller-risk hard floor ──
-  if (!seller.sellerVerified && (seller.counterfeitRisk === 'high' || seller.counterfeitRisk === 'critical')) {
+  if (!seller.sellerVerified && seller.counterfeitRisk === 'critical') {
+    trustScore = Math.min(trustScore, 40)   // below 45 = "Do not buy" on the button, bubble and panel
+  } else if (!seller.sellerVerified && seller.counterfeitRisk === 'high') {
     trustScore = Math.min(trustScore, 49)
   } else if (!seller.sellerVerified && seller.counterfeitRisk === 'medium') {
     trustScore = Math.min(trustScore, 64)
