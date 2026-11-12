@@ -9,6 +9,7 @@ import { NotProductView } from './views/NotProductView'
 import { ScanningView   } from './views/ScanningView'
 import { ResultsView    } from './views/ResultsView'
 import { WatchesView    } from './views/WatchesView'
+import { AccountChip    } from './components/AccountChip'
 import { Bell } from 'lucide-react'
 import { PLATFORM_NAMES, WEBSITE_URL } from '../utils/constants'
 import logoUrl from '/scancart-logo.png'
@@ -19,6 +20,7 @@ export default function Popup() {
   const [prevState, setPrevState] = useState('ready')
   const [platform, setPlatform] = useState(null)
   const [product, setProduct]   = useState(null)        // what the content script read from the page
+  const [user, setUser]         = useState(null)        // signed-in user synced from the website
   const { scanning, results, stageIndex, error, scan, reset } = useScan()
 
   useEffect(() => {
@@ -30,6 +32,7 @@ export default function Popup() {
         if (plat && tab?.id != null) readProduct(tab.id).then(setProduct)
 
         const stored = await chrome.storage.local.get('scancart_user')
+        setUser(stored.scancart_user || null)
         setAppState(stored.scancart_user ? 'ready' : 'login')
       } catch {
         setAppState('ready')    // fallback: show ready state, skip auth gate
@@ -37,6 +40,23 @@ export default function Popup() {
     }
     init()
   }, [])
+
+  // Live login status: the website writes/removes scancart_user while the popup is open
+  useEffect(() => {
+    const onChange = (changes, area) => {
+      if (area !== 'local' || !changes.scancart_user) return
+      const u = changes.scancart_user.newValue || null
+      setUser(u)
+      setAppState(s => (u ? (s === 'login' ? 'ready' : s) : 'login'))
+    }
+    chrome.storage.onChanged.addListener(onChange)
+    return () => chrome.storage.onChanged.removeListener(onChange)
+  }, [])
+
+  const signOut = async () => {
+    await chrome.storage.local.remove('scancart_user')
+    setUser(null); reset(); setAppState('login')
+  }
 
   useEffect(() => {
     if (scanning) setAppState('scanning')
@@ -63,6 +83,7 @@ export default function Popup() {
             {appState !== 'watches' && appState !== 'scanning' && (
               <button className="sc-icon-btn" title="Price watches" aria-label="Price watches" onClick={() => { setPrevState(appState); setAppState('watches') }}><Bell size={15} /></button>
             )}
+            <AccountChip user={user} onSignIn={() => openSite('/sign-in')} onDashboard={() => openSite('/dashboard')} onSignOut={signOut} />
           </div>
         </div>
       )}

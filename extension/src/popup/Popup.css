@@ -248,3 +248,43 @@ button { font-family: inherit; }
 .sc-input:focus { outline: 2px solid #BFDBFE; border-color: #2563EB; }
 .sc-icon-btn { width: 30px; height: 30px; border-radius: 999px; border: 1px solid #E2E8F0; background: #fff; color: #334155; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; }
 .sc-icon-btn:hover { background: #F1F5F9; color: #2563EB; }
+
+/* ── Account chip (login status) ───────────────────────── */
+.sc-acct-wrap { position: relative; }
+.sc-acct {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 9px 0 3px;
+  border: 1px solid var(--slate-200); border-radius: 999px; background: #fff; cursor: pointer;
+  font-size: 11.5px; font-weight: 700; color: var(--slate-700);
+}
+.sc-acct:hover { background: var(--slate-50); }
+.sc-acct.out { padding: 0 10px; gap: 6px; color: var(--slate-500); background: var(--slate-100); border-color: transparent; }
+.sc-acct-name { max-width: 70px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-avatar {
+  position: relative; width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+  display: grid; place-items: center; background: var(--btn); color: #fff; font-size: 11px; font-weight: 800;
+}
+.sc-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
+.sc-avatar.lg { width: 36px; height: 36px; font-size: 15px; }
+.sc-avatar .sc-acct-dot { position: absolute; right: -1px; bottom: -1px; border: 2px solid #fff; width: 9px; height: 9px; }
+.sc-acct-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.sc-acct-dot.green { background: #22C55E; }
+.sc-acct-dot.grey  { background: var(--slate-400); }
+.sc-acct-menu {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 50; width: 240px; padding: 6px;
+  background: #fff; border: 1px solid var(--slate-200); border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(15,23,42,.14);
+}
+.sc-acct-head { display: flex; align-items: center; gap: 10px; padding: 8px 8px 10px; }
+.sc-acct-full { font-size: 13px; font-weight: 700; }
+.sc-acct-email { font-size: 11.5px; color: var(--slate-500); }
+.sc-acct-status {
+  display: flex; align-items: center; gap: 6px; margin: 0 2px 4px; padding: 7px 8px; border-radius: 9px;
+  background: var(--green-50); color: var(--green-600); font-size: 11px; font-weight: 700;
+}
+.sc-acct-item {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px; border: 0; border-radius: 9px;
+  background: none; cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--slate-700); text-align: left;
+}
+.sc-acct-item:hover { background: var(--slate-100); }
+.sc-acct-item.danger { color: var(--red-600); }
+.sc-acct-item.danger:hover { background: var(--red-50); }

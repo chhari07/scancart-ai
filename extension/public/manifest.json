@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ScanCart.ai - AI Product Authenticity",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Check a product before you buy: Trust Score, fake-review and fake-sale checks, price history and price-drop alerts.",
   "permissions": [
     "activeTab",
