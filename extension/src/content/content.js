@@ -9,6 +9,8 @@ import {
   setFabChecking,
   setFabQuick,
   setPriceInfo,
+  getPageStatus,
+  openPanel,
 } from "./injectButton";
 import { callBackend } from "../services/backendClient";
 
@@ -62,6 +64,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse(scanner.getData());
       break;
     }
+
+    // Toolbar popup asks what the page already knows (quick / full score)
+    case MESSAGE_TYPES.GET_STATUS:
+      sendResponse(getPageStatus());
+      break;
+
+    // Toolbar popup hands over to the on-page panel (the main ScanCart view)
+    case MESSAGE_TYPES.OPEN_PANEL:
+      sendResponse({ opened: openPanel(message.option || null) });
+      break;
 
     default:
       sendResponse({ success: true });

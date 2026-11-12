@@ -21,6 +21,8 @@ export default function Popup() {
   const [platform, setPlatform] = useState(null)
   const [product, setProduct]   = useState(null)        // what the content script read from the page
   const [user, setUser]         = useState(null)        // signed-in user synced from the website
+  const [tabId, setTabId]       = useState(null)
+  const [status, setStatus]     = useState(null)        // score the page already has (quick / full)
   const { scanning, results, stageIndex, error, scan, reset } = useScan()
 
   useEffect(() => {
@@ -29,7 +31,11 @@ export default function Popup() {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
         const plat  = detectPlatformFromUrl(tab?.url || '')
         setPlatform(plat)
-        if (plat && tab?.id != null) readProduct(tab.id).then(setProduct)
+        setTabId(tab?.id ?? null)
+        if (plat && tab?.id != null) {
+          readProduct(tab.id).then(setProduct)
+          askTab(tab.id, { type: 'SCANCART_GET_STATUS' }).then(st => st && setStatus(st))
+        }
 
         const stored = await chrome.storage.local.get('scancart_user')
         setUser(stored.scancart_user || null)
@@ -52,6 +58,24 @@ export default function Popup() {
     chrome.storage.onChanged.addListener(onChange)
     return () => chrome.storage.onChanged.removeListener(onChange)
   }, [])
+
+  // The page sends its score when the quick check (or a full check) finishes
+  useEffect(() => {
+    const onMsg = (msg, sender) => {
+      if (msg?.type === 'SCANCART_STATUS' && sender.tab?.id === tabId) setStatus(msg.status)
+    }
+    chrome.runtime.onMessage.addListener(onMsg)
+    return () => chrome.runtime.onMessage.removeListener(onMsg)
+  }, [tabId])
+
+  // Hand over to the on-page panel (main view). If the page script is not there
+  // (page opened before the extension was installed/updated), scan here instead.
+  const openOnPage = async option => {
+    const r = tabId != null ? await askTab(tabId, { type: 'SCANCART_OPEN_PANEL', option }) : null
+    if (r?.opened) { window.close(); return }
+    if (option === 'alternatives') { openSite('/dashboard'); return }
+    scan()
+  }
 
   const signOut = async () => {
     await chrome.storage.local.remove('scancart_user')
@@ -99,7 +123,7 @@ export default function Popup() {
       {appState === 'ready' && (
         <div className="sc-body">
           {platform
-            ? <ReadyView platform={platform} product={product} onScan={scan} error={error} />
+            ? <ReadyView platform={platform} product={product} status={status} onOpen={openOnPage} error={error} />
             : <NotProductView />}
         </div>
       )}
@@ -117,6 +141,19 @@ export default function Popup() {
       )}
     </div>
   )
+}
+
+// Send one message to the page script; resolves null if it is not there.
+function askTab(tabId, msg, wait = 1500) {
+  return new Promise(resolve => {
+    const timer = setTimeout(() => resolve(null), wait)
+    try {
+      chrome.tabs.sendMessage(tabId, msg, data => {
+        clearTimeout(timer)
+        resolve(chrome.runtime.lastError ? null : data || null)
+      })
+    } catch { clearTimeout(timer); resolve(null) }
+  })
 }
 
 // Ask the content script for the product it read; resolves null if it is not there.

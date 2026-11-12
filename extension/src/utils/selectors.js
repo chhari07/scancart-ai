@@ -52,8 +52,9 @@ export const SELECTORS = {
     rating:          '#acrPopover .a-icon-alt',
     numRatings:      '#acrCustomerReviewText',     // "12,847 ratings"
     numReviews:      '#acrCustomerReviewText',     // Amazon combines both; we parse same element
-    seller:          '#sellerProfileTriggerId, #merchant-info a',
-    sellerLink:      '#sellerProfileTriggerId, #merchant-info a',   // href → seller profile URL
+    // Tried in this order; link texts like "Learn more about the seller" are skipped (scanner.parseSeller)
+    seller:          '#sellerProfileTriggerId, #merchantInfoFeature_feature_div .offer-display-feature-text-message, [offer-display-feature-name="desktop-merchant-info"] .offer-display-feature-text-message, #tabular-buybox [tabular-attribute-name="Sold by"] .tabular-buybox-text-message, #merchant-info a',
+    sellerLink:      '#sellerProfileTriggerId, #merchant-info a[href*="seller="], a[href*="/sp?"][href*="seller="]',   // href → seller profile URL
     reviewTexts:     '[data-hook="review-body"] span.a-size-base, span.review-text-content span, [data-hook="review-body"] > span',
     reviewDates:     '[data-hook="review-date"]',
     // Best-effort strikethrough/MRP element — mirror of the price parser's exclusion list,

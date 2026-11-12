@@ -231,8 +231,14 @@ export class ProductScanner {
 
   parseSeller(selector) {
     try {
-      const text = this.text(selector)
-      if (text) return text
+      // Try each selector in order (not document order) and skip link captions that are not a name
+      const JUNK = /learn more|see (all|more|details)|details|visit the|other sellers|^sold by:?$|^ships from/i
+      for (const one of String(selector || '').split(',').map(x => x.trim()).filter(Boolean)) {
+        for (const el of document.querySelectorAll(one)) {
+          const t = (el.textContent || '').replace(/^\s*sold by:?\s*/i, '').replace(/\s+/g, ' ').trim()
+          if (t && t.length <= 60 && !JUNK.test(t)) return t
+        }
+      }
       // Fallback to platform name
       const fallbacks = { amazon: 'Amazon', flipkart: 'Flipkart', myntra: 'Myntra', nykaa: 'Nykaa', meesho: 'Meesho' }
       return fallbacks[this.platform] || this.platform

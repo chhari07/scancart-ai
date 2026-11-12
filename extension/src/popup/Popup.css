@@ -288,3 +288,19 @@ button { font-family: inherit; }
 .sc-acct-item:hover { background: var(--slate-100); }
 .sc-acct-item.danger { color: var(--red-600); }
 .sc-acct-item.danger:hover { background: var(--red-50); }
+
+/* ── Page score (same number as the orange button) + clickable checks ── */
+.sc-score { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-width: 1.5px; }
+.sc-score-num {
+  width: 48px; height: 48px; border-radius: 14px; flex-shrink: 0; display: grid; place-items: center;
+  font-size: 20px; font-weight: 900; letter-spacing: -.02em; color: #fff;
+}
+.sc-score-words { font-size: 14px; font-weight: 800; }
+.sc-score.green { border-color: #BBF7D0; } .sc-score.green .sc-score-num { background: #16A34A; } .sc-score.green .sc-score-words { color: var(--green-600); }
+.sc-score.amber { border-color: #FDE68A; } .sc-score.amber .sc-score-num { background: #F59E0B; } .sc-score.amber .sc-score-words { color: #B45309; }
+.sc-score.red   { border-color: #FECACA; } .sc-score.red   .sc-score-num { background: #DC2626; } .sc-score.red   .sc-score-words { color: var(--red-600); }
+.sc-score .sc-btn.sm { height: 32px; padding: 0 12px; gap: 5px; background: var(--slate-900); color: #fff; font-size: 12px; }
+button.sc-opt { width: 100%; border: 0; background: none; cursor: pointer; text-align: left; font: inherit; color: inherit; }
+button.sc-opt:hover { background: var(--slate-50); }
+.sc-list > button.sc-opt:first-child { border-radius: 18px 18px 0 0; }
+.sc-list > button.sc-opt:last-child  { border-radius: 0 0 18px 18px; }

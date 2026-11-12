@@ -10,6 +10,26 @@ let _productData = null
 let _shadowRoot  = null
 let _priceInfo   = null   // { points, summary, discount } from /api/price/observe on page load
 let _quick       = null   // quick badge result
+let _full        = null   // full scan score (number) once the user ran a check
+
+// What the page knows right now — the toolbar popup reads this (one source of truth)
+export function getPageStatus() {
+  return {
+    quick: _quick && typeof _quick.trustScore === 'number' ? { trustScore: _quick.trustScore, discount: _quick.discount?.status || null } : null,
+    full: typeof _full === 'number' ? _full : null,
+  }
+}
+function _announce() {
+  try { chrome.runtime.sendMessage({ type: 'SCANCART_STATUS', status: getPageStatus() }) } catch {}
+}
+
+/** Open the panel from the toolbar popup, optionally straight into one check. */
+export function openPanel(option) {
+  if (!_shadowRoot) return false
+  _showPanel()
+  if (option) _handleOption(option)
+  return true
+}
 
 // Extension files (logo, font) as URLs the page can load
 function _asset(path) {
@@ -103,6 +123,7 @@ export function setFabQuick(q) {
   fab.classList.add(cls)
   label.innerHTML = `<span class="fab-quick">QUICK</span> ${q.trustScore} · ${q.discount?.status === 'fake_sale' ? 'Sale looks fake' : words}`
   fab.title = 'Quick check from page data (no AI yet). Open to run the full scan.'
+  _announce()
 }
 
 export function setPriceInfo(info) {
@@ -110,6 +131,8 @@ export function setPriceInfo(info) {
 }
 
 export function setFabResult(score) {
+  _full = score
+  _announce()
   const fab = _shadowRoot?.getElementById('sc-fab')
   if (!fab) return
   fab.classList.remove('fab-green', 'fab-yellow', 'fab-red')
@@ -312,7 +335,7 @@ function _productHTML(d) {
   if (!d) {
     return `<div style="padding:14px 16px;font-size:12px;color:#94A3B8;">Product data will appear after scanning.</div>`
   }
-  const price = d.price ? `Rs. ${Number(d.price).toLocaleString('en-IN')}` : null
+  const price = d.price ? `₹${Number(d.price).toLocaleString('en-IN')}` : null
   const rating = d.rating ? Number(d.rating).toFixed(1) : null
   const numRatings = d.numRatings || d.reviewCount
   const platName = (d.platform || 'store').charAt(0).toUpperCase() + (d.platform || 'store').slice(1)
@@ -330,8 +353,8 @@ function _productHTML(d) {
         <div class="sc-prod-meta">
           ${_ic(P.store, 13, '#94A3B8')}
           <span>${d.seller || platName}</span>
-          ${rating ? `<span>· ${rating}/5</span>` : ''}
-          ${numRatings ? `<span>(${Number(numRatings).toLocaleString('en-IN')})</span>` : ''}
+          ${rating ? `<span>· ${rating} ★</span>` : ''}
+          ${numRatings ? `<span>· ${Number(numRatings).toLocaleString('en-IN')} ratings</span>` : ''}
         </div>
       </div>
     </div>
@@ -526,10 +549,10 @@ function _priceResult(r) {
   const save        = hasCheaper ? (cur - best) : 0
 
   const insight = hasCheaper
-    ? `Same product available on ${plat} for Rs. ${best.toLocaleString('en-IN')}, saving you Rs. ${save.toLocaleString('en-IN')}.`
-    : `No lower price found in ScanCart's search — Rs. ${cur.toLocaleString('en-IN')} looks like a fair price.`
+    ? `Same product available on ${plat} for ₹${best.toLocaleString('en-IN')}, saving you ₹${save.toLocaleString('en-IN')}.`
+    : `No lower price found in ScanCart's search — ₹${cur.toLocaleString('en-IN')} looks like a fair price.`
 
-  const bestLabel = hasCheaper ? `Rs. ${best.toLocaleString('en-IN')}` : 'None cheaper'
+  const bestLabel = hasCheaper ? `₹${best.toLocaleString('en-IN')}` : 'None cheaper'
   const bestSub   = hasCheaper ? `${plat}${platUrl ? ' ↗' : ''}` : 'in ScanCart\'s search'
 
   const hist = r.priceHistory || _priceInfo
@@ -537,11 +560,11 @@ function _priceResult(r) {
     ${_discountHTML(hist?.discount)}
     ${_graphHTML(hist?.points, cur)}
     ${_watchHTML()}
-    ${_rHead(P.rupee,'#16A34A','rgba(22,163,74,0.1)','Price check','This price vs similar products',hasCheaper?`SAVE Rs.${save.toLocaleString('en-IN')}`:'NO CHEAPER STORE','#16A34A')}
+    ${_rHead(P.rupee,'#16A34A','rgba(22,163,74,0.1)','Price check','This price vs similar products',hasCheaper?`SAVE ₹${save.toLocaleString('en-IN')}`:'NO CHEAPER STORE','#16A34A')}
     <div class="sc-price-vs">
       <div class="sc-pv-side">
         <div class="sc-pv-label">Current</div>
-        <div class="sc-pv-val">Rs. ${cur.toLocaleString('en-IN')}</div>
+        <div class="sc-pv-val">₹${cur.toLocaleString('en-IN')}</div>
         <div class="sc-pv-plat">${r.platform || 'This site'}</div>
       </div>
       <div class="sc-pv-arrow">${hasCheaper ? '→' : '✓'}</div>
@@ -551,11 +574,11 @@ function _priceResult(r) {
         <div class="sc-pv-plat">${bestSub}</div>
       </div>
     </div>
-    ${hasCheaper ? `<div class="sc-savings-banner">Save <strong>Rs. ${save.toLocaleString('en-IN')}</strong> on ${plat}</div>` : ''}
+    ${hasCheaper ? `<div class="sc-savings-banner">Save <strong>₹${save.toLocaleString('en-IN')}</strong> on ${plat}</div>` : ''}
     ${_aiBox(insight)}
     ${_verdict(
       hasCheaper
-        ? `Better price on ${plat} — save Rs. ${save.toLocaleString('en-IN')}`
+        ? `Better price on ${plat} — save ₹${save.toLocaleString('en-IN')}`
         : 'No cheaper store found right now',
       hasCheaper ? 'yellow' : 'green'
     )}
@@ -602,7 +625,7 @@ function _sellerResult(r) {
   return `
     ${_rHead(P.shield,'#2563EB','rgba(37,99,235,0.1)','Seller Trust','History, verification & credibility',chip,chipClr)}
     ${_trustBar(r.trustScore)}
-    ${_stats([`${rat}/5`,'Rating',c],[ver?'Yes':'No','Verified',ver?'#16A34A':'#DC2626'],[risk.toUpperCase(),'Risk',risk==='low'?'#16A34A':risk==='medium'?'#CA8A04':'#DC2626'])}
+    ${_stats([rat > 0 ? `${rat}/5` : '—','Seller rating',rat > 0 ? c : '#94A3B8'],[ver?'Yes':'No','Verified',ver?'#16A34A':'#DC2626'],[risk.toUpperCase(),'Risk',risk==='low'?'#16A34A':risk==='medium'?'#CA8A04':'#DC2626'])}
     ${_aiBox(insight)}
     ${_verdict(verdict,vLevel)}
   `
@@ -653,7 +676,7 @@ function _altResult(r) {
     : 0
 
   const insight = hasReal
-    ? `Found ${realAlts.length} alternative${realAlts.length > 1 ? 's' : ''} on Indian e-commerce${bestSave > 0 ? ` — best saves Rs. ${bestSave.toLocaleString('en-IN')}` : ''}. Click any card to view.`
+    ? `Found ${realAlts.length} alternative${realAlts.length > 1 ? 's' : ''} on Indian e-commerce${bestSave > 0 ? ` — best saves ₹${bestSave.toLocaleString('en-IN')}` : ''}. Click any card to view.`
     : alts.length > 0
     ? 'AI found search links to help explore alternatives on Amazon and Flipkart.'
     : 'No alternatives found for this product. Try searching manually on Amazon or Flipkart.'
@@ -682,8 +705,8 @@ function _altResult(r) {
               <div class="sc-alt-name">${a.name}</div>
               <div class="sc-alt-price-row">
                 ${a.price > 0
-                  ? `<span class="sc-alt-price-val">${a.priceIsEstimate ? '~' : ''}Rs. ${a.price.toLocaleString('en-IN')}${a.priceIsEstimate ? ' <small style="font-weight:500;opacity:.7">est.</small>' : ''}</span>
-                     ${save > 0 ? `<span class="sc-alt-save">${a.priceIsEstimate ? 'Maybe save' : 'Save'} Rs.${save.toLocaleString('en-IN')}</span>` : ''}`
+                  ? `<span class="sc-alt-price-val">${a.priceIsEstimate ? '~' : ''}₹${a.price.toLocaleString('en-IN')}${a.priceIsEstimate ? ' <small style="font-weight:500;opacity:.7">est.</small>' : ''}</span>
+                     ${save > 0 ? `<span class="sc-alt-save">${a.priceIsEstimate ? 'Maybe save' : 'Save'} ₹${save.toLocaleString('en-IN')}</span>` : ''}`
                   : `<span style="font-size:11px;color:#94A3B8">Tap to check price</span>`}
               </div>
               <div class="sc-alt-badges">
@@ -706,13 +729,13 @@ function _altResult(r) {
   return `
     ${_rHead(P.bulb, '#CA8A04', 'rgba(234,179,8,0.1)', 'Cheaper options', 'Similar products on Indian stores',
       hasReal
-        ? (bestSave > 0 ? `SAVE Rs.${bestSave.toLocaleString('en-IN')}` : `${realAlts.length} FOUND`)
+        ? (bestSave > 0 ? `SAVE ₹${bestSave.toLocaleString('en-IN')}` : `${realAlts.length} FOUND`)
         : alts.length > 0 ? 'EXPLORE' : 'NONE FOUND',
       '#CA8A04')}
     <div class="sc-alt-grid" id="sc-alt-grid">${cardsHTML}</div>
     ${_aiBox(insight)}
     ${hasReal
-      ? _verdict(bestSave > 0 ? `Save up to Rs. ${bestSave.toLocaleString('en-IN')} with these alternatives` : `${realAlts.length} alternative${realAlts.length > 1 ? 's' : ''} found — compare and choose`, 'green')
+      ? _verdict(bestSave > 0 ? `Save up to ₹${bestSave.toLocaleString('en-IN')} with these alternatives` : `${realAlts.length} alternative${realAlts.length > 1 ? 's' : ''} found — compare and choose`, 'green')
       : alts.length > 0
       ? _verdict('Click any card to explore alternatives on Amazon or Flipkart', 'yellow')
       : _verdict('No alternatives found — this may be a unique or niche product', 'yellow')}
@@ -759,7 +782,7 @@ function _summaryResult(r) {
   return `
     ${_rHead(P.shield,c,c+'1A',score >= 70 ? 'Safe to buy' : score >= 45 ? 'Buy with caution' : 'Do not buy',`${r.checksCompleted ?? 6} of ${r.checksTotal ?? 6} checks completed`,`${score}/100`,c)}
     ${_trustBar(score)}
-    ${_stats([fake == null ? '—' : `${fake}%`,'Fake Reviews',fake == null ? null : reviewsOK?'#16A34A':'#DC2626'],[r.sellerRating == null ? '—' : `${r.sellerRating}/5`,'Seller',null],[hasSavings?`Rs.${(r.savings||0).toLocaleString('en-IN')}`:'Fair','Price','#16A34A'])}
+    ${_stats([fake == null ? '—' : `${fake}%`,'Fake Reviews',fake == null ? null : reviewsOK?'#16A34A':'#DC2626'],[r.sellerRating == null ? '—' : `${r.sellerRating}/5`,'Seller',null],[hasSavings?`₹${(r.savings||0).toLocaleString('en-IN')}`:'Fair','Price','#16A34A'])}
     ${_aiBox(insight)}
     <div class="sc-sum-badges">
       <span class="sc-sum-badge" style="color:${reviewsOK?'#16A34A':'#DC2626'};background:${reviewsOK?'rgba(22,163,74,0.1)':'rgba(220,38,38,0.1)'}">Reviews ${reviewsOK?'OK':'Suspicious'}</span>
@@ -781,7 +804,7 @@ function _togglePanel() { _shadowRoot?.getElementById('sc-panel')?.classList.con
 /* ═══════════════════════════════════════════════
    PRICE HISTORY · DISCOUNT CHECK · WATCH (v1.1)
 ═══════════════════════════════════════════════ */
-const _rs = (n) => 'Rs. ' + Math.round(n).toLocaleString('en-IN')
+const _rs = (n) => '₹' + Math.round(n).toLocaleString('en-IN')
 
 function _discountHTML(d) {
   if (!d) return ''

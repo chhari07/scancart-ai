@@ -35,7 +35,11 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     }
   }
 
-  // Quick trust score from the page-load badge → show it on the toolbar icon too
+  // Score from the page (quick on load, full after a check) → toolbar icon shows the same number
+  if (msg.type === 'SCANCART_STATUS' && sender.tab?.id != null) {
+    const sc = msg.status?.full ?? msg.status?.quick?.trustScore
+    if (typeof sc === 'number') msg = { type: 'SCANCART_QUICK_SCORE', score: sc }
+  }
   if (msg.type === 'SCANCART_QUICK_SCORE' && sender.tab?.id != null && typeof msg.score === 'number') {
     const color = msg.score >= 70 ? '#16A34A' : msg.score >= 45 ? '#F59E0B' : '#DC2626'
     chrome.action.setBadgeText({ text: String(msg.score), tabId: sender.tab.id })
