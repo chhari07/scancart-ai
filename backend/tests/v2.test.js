@@ -118,3 +118,14 @@ test('watches: add, list, price drop hits target once, delete', async () => {
   assert.equal(other.length, 0, 'cannot touch another owner\'s watch')
   assert.equal((await fetch(`${base}/api/watch/${w.id}?ownerId=${owner}`, { method: 'DELETE' })).status, 200)
 })
+
+test('regression: popup sends productData null (stale tab) → 422 "not enough data", never 400', async () => {
+  const r = await post('/api/scan/quick', { url: PAGE.url, productData: null, userId: null })
+  assert.equal(r.status, 422)
+})
+
+test('regression: a broken MRP never blocks saving the price', async () => {
+  const r = await post('/api/price/observe', { url: 'https://www.amazon.in/dp/B0MRPTEST1', productData: { productName: 'TV', price: 124999, mrpPrice: 124990000 } })
+  assert.equal(r.status, 200)
+  assert.equal((await post('/api/price/observe', { url: 'https://www.amazon.in/dp/B0MRPTEST1', productData: { price: 999, mrpPrice: 'abc' } })).status, 200)
+})

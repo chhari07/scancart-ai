@@ -184,7 +184,9 @@ export class ProductScanner {
     try {
       const el = document.querySelector(selector)
       if (!el) return 0
-      return parseInt(el.textContent.replace(/[^0-9]/g, '')) || 0
+      // "₹4,490.00" → 4490 (keep the decimal point, or .00 turns it into 449000)
+      const m = el.textContent.replace(/,/g, '').match(/\d+(?:\.\d+)?/)
+      return m ? Math.round(parseFloat(m[0])) : 0
     } catch { return 0 }
   }
 

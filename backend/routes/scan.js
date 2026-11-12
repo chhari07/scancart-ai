@@ -12,10 +12,10 @@ export const scanRouter = Router()
 // ── Input validation schema ──────────────────────────────────────
 const ScanSchema = z.object({
   url: z.string().url('Invalid URL'),
-  userId: z.string().optional(),
+  userId: z.string().nullish().transform(v => v || undefined),
   // Use passthrough so scanner fields (productName, numRatings, numReviews, image, etc.)
   // are forwarded to agents instead of being stripped by Zod.
-  productData: z.object({}).passthrough().optional(),
+  productData: z.object({}).passthrough().nullish().transform(v => v || {}),
 })
 
 // ── POST /api/scan ───────────────────────────────────────────────

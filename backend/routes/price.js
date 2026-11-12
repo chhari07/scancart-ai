@@ -12,7 +12,8 @@ const ObserveSchema = z.object({
   productData: z.object({
     productName: z.string().max(400).optional(),
     price: z.coerce.number().positive().max(1e8),
-    mrpPrice: z.coerce.number().nonnegative().max(1e8).optional(),
+    // MRP is only a hint: a bad or missing value is dropped, never a reason to reject the price
+    mrpPrice: z.any().optional().transform(v => { const n = Number(v); return Number.isFinite(n) && n > 0 && n < 1e8 ? n : undefined }),
     platform: z.string().max(40).optional(),
   }).passthrough(),
 })
