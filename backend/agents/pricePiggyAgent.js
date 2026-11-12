@@ -2,12 +2,17 @@
 // ENGINE 3 — Price Piggy
 // LOCAL LOGIC → real Amazon search for best price + alt price range → Claude enhancement.
 // Explains WHY prices differ, not just how much.
-import crypto from 'crypto'
 import { claudeJsonWithTimeout } from '../services/claude.js'
 import { detectPlatform } from '../utils/platformDetector.js'
 import { validatePrice, detectCategory } from '../utils/priceValidator.js'
 import { searchAmazonIndia, amazonSearchUrl, flipkartSearchUrl } from '../services/searchProducts.js'
-import { recordPriceObservation, getPriorPriceStats } from '../services/firebase.js'
+import { productKeyFor, getHistory, summarise, recordPrice } from '../services/priceStore.js'
+
+// ScanCart's own tracked prices for this exact listing (Firestore or the local store).
+async function getPriorPriceStats(key, windowDays = 30) {
+  const s = summarise(await getHistory(key, { days: windowDays }))
+  return s ? { priorLow: s.low, priorHigh: s.high, priorAvg: s.avg, sampleCount: s.count, windowDays } : null
+}
 
 const TIMEOUT = parseInt(process.env.AGENT_TIMEOUT) || 10000
 
@@ -35,7 +40,7 @@ export async function pricePiggyAgent({ url, productData }) {
   const category     = detectCategory(name)
   // Extract original ASIN so we never return the same product as "best price"
   const originalAsin = url?.match(/\/dp\/([A-Z0-9]{10})/i)?.[1] || null
-  const productKey    = buildProductKey({ url, platform, productName: name })
+  const productKey    = productKeyFor({ url, platform, productName: name })
 
   // ── Step 1: local heuristic baseline ───────────────────────────────
   const local = localPriceAnalysis(currentPrice, name, platform)
@@ -53,7 +58,7 @@ export async function pricePiggyAgent({ url, productData }) {
   const priorStats    = priorStatsResult.status === 'fulfilled' ? priorStatsResult.value : null
 
   // Fire-and-forget: feed FUTURE scans of this exact listing. Never blocks the response.
-  recordPriceObservation(productKey, { price: currentPrice, platform, productName: name, url }).catch(() => {})
+  recordPrice(productKey, { price: currentPrice, mrp, platform, productName: name, url }).catch(() => {})
 
   // ── Prior-price verdict — the primary discount-claim verifier when we ─
   // have real, self-tracked history for this exact listing (not another guess).
@@ -185,16 +190,6 @@ Return ONLY valid JSON:
       altPriceRange:   altRange,
       source: 'heuristic', success: true,
     }
-  }
-}
-
-// ── Deterministic per-listing key so we can track OUR OWN price history ────
-function buildProductKey({ url, platform, productName }) {
-  try {
-    const u = new URL(url)
-    return crypto.createHash('sha1').update(`${u.origin}${u.pathname}`).digest('hex')
-  } catch {
-    return crypto.createHash('sha1').update(`${platform}:${(productName || '').toLowerCase()}`).digest('hex')
   }
 }
 

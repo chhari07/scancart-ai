@@ -3,6 +3,7 @@
 // Fetches Amazon seller profile for address/feedback data,
 // builds Google Maps + Google Search verification URLs,
 // then uses Claude for legitimacy analysis.
+import { isQuickScan } from '../services/scanContext.js'
 import { claudeJsonWithTimeout } from '../services/claude.js'
 import { validatePrice, detectCategory } from '../utils/priceValidator.js'
 
@@ -150,7 +151,7 @@ Return ONLY valid JSON:
 
 // ── Fetch Amazon seller profile page for address/feedback data ────────
 async function fetchSellerProfile(profilePath, platform) {
-  if (!profilePath) return null
+  if (!profilePath || isQuickScan()) return null
 
   const base = platform === 'flipkart' ? 'https://www.flipkart.com' : 'https://www.amazon.in'
   const url  = profilePath.startsWith('http') ? profilePath : `${base}${profilePath}`

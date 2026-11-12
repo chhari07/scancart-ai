@@ -13,6 +13,8 @@ import { alternativeLightbulbAgent } from '../agents/alternativeLightbulbAgent.j
 import { complianceEngineAgent } from '../agents/complianceEngineAgent.js'
 import { calculateTrustScore, getTrustLevel, buildAuthenticitySummary } from '../utils/trustScore.js'
 import { detectPlatform } from '../utils/platformDetector.js'
+import { reviewDateSpike } from '../utils/reviewSpike.js'
+import { productKeyFor, getHistory, summarise, discountVerdict } from './priceStore.js'
 
 export async function runAgenticScan({ url, productData, userId }) {
   const startTime = Date.now()
@@ -25,6 +27,13 @@ export async function runAgenticScan({ url, productData, userId }) {
   // Without this, an empty scan produced default numbers (10% fake reviews,
   // a made-up star split, "critical" counterfeit risk from a price of 0).
   const has = dataAvailable(productData)
+
+  // Price history is read BEFORE the price agent saves today's price, so the verdict compares with the past only.
+  const platformGuess = productData?.platform || detectPlatform(url)
+  const productKey = productKeyFor({ url, platform: platformGuess, productName: productData?.productName || productData?.name })
+  const historyP = getHistory(productKey, { days: 90 }).catch(() => [])
+  // Review burst check — only on review dates the page actually showed
+  const spike = reviewDateSpike(productData?.reviewDates)
   const gated = (ok, why, run) => ok ? run() : Promise.reject(new Error(`Skipped: ${why}`))
 
   // ── 5 agents in parallel ───────────────────────────────────────────
@@ -94,6 +103,10 @@ export async function runAgenticScan({ url, productData, userId }) {
   })
 
   // ── Trust Score fusion (single source of truth in utils/trustScore.js) ──
+  if (spike.spike && !review.unavailable) {
+    review.dateSpike = true
+    review.redFlags = [spike.note, ...(review.redFlags || [])]
+  }
   const trustScore = calculateTrustScore({ review, rating, seller, price, quality, compliance })
   if (trustScore === null) {
     // Nothing real to score — an error is more honest than a verdict built from nothing.
@@ -159,6 +172,12 @@ export async function runAgenticScan({ url, productData, userId }) {
     mrp:             price.mrp                 || 0,
     priorPriceVerdict: price.priorPriceVerdict || null,
 
+    // ── Price history (ScanCart's own observations) + is the discount real? ──
+    priceHistory: await buildPriceHistory(historyP, productKey, productData),
+
+    // ── Review date burst ──
+    reviewSpike: spike,
+
     // ── Engine 7 — Compliance ──
     complianceScore:        compliance.complianceScore,
     complianceChecks:       compliance.checks || [],
@@ -218,6 +237,17 @@ export async function runAlternatives({ url, productData }) {
     alternativeSummary:     alt.alternativeSummary || '',
     source:                 alt.source || 'heuristic',
     durationMs:             Date.now() - started,
+  }
+}
+
+async function buildPriceHistory(historyP, productKey, productData) {
+  const points = await historyP
+  const price = Number(productData?.price) || 0
+  return {
+    productKey,
+    points: points.map(p => ({ t: p.t, price: p.price })),
+    summary: summarise(points),
+    discount: price > 0 ? discountVerdict(points, { price, mrp: Number(productData?.mrpPrice) || 0 }) : null,
   }
 }
 
@@ -299,13 +329,14 @@ function buildAISummary(trustScore, trustLevel, review, rating, seller, price, q
     reviewPoints.push(`Compared against ${review.similarProductsCompared} similar products on Amazon`)
   if (review.redFlags?.length > 0)
     reviewPoints.push(...review.redFlags.slice(0, 2))
+  const reviewLevelFinal = review.dateSpike && reviewLevel === 'safe' ? 'warning' : reviewLevel
   if (review.comparisonNote)
     reviewPoints.push(review.comparisonNote)
   sections.push({
     id:      'reviews',
     title:   'Review Authenticity',
-    level:   reviewLevel,
-    verdict: reviewLevel === 'danger' ? 'High Fake Risk' : reviewLevel === 'warning' ? 'Moderate Concern' : 'Looks Genuine',
+    level:   reviewLevelFinal,
+    verdict: reviewLevelFinal === 'danger' ? 'High Fake Risk' : reviewLevelFinal === 'warning' ? 'Moderate Concern' : 'Looks Genuine',
     points:  reviewPoints,
   })
 
@@ -430,6 +461,8 @@ function buildAISummary(trustScore, trustLevel, review, rating, seller, price, q
 // replaces vague adjectives ("some concerns detected") with cited evidence.
 function collectTopEvidence({ review, rating, seller, price, compliance }, n = 3) {
   const candidates = []
+  if (!review.unavailable && review.dateSpike)
+    candidates.push({ weight: 55, text: 'Many reviews were posted within a few days (review burst)' })
   if (!review.unavailable && review.fakePercent >= 25)
     candidates.push({ weight: review.fakePercent, text: `${review.fakePercent}% of reviews flagged as fake` })
   if (!rating.unavailable && rating.ratingAboveRange)

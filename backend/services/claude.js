@@ -1,5 +1,6 @@
 // backend/services/claude.js
 import Anthropic from '@anthropic-ai/sdk'
+import { isQuickScan } from './scanContext.js'
 
 let client = null
 
@@ -22,6 +23,7 @@ export function getClaudeClient() {
 export async function claudeJson(prompt, maxTokens = 800) {
   // No key → fail at once with a plain reason; each agent then uses its backup rules.
   if (!hasClaudeKey()) throw new Error('ANTHROPIC_API_KEY not set — using backup rules')
+  if (isQuickScan()) throw new Error('Quick check — backup rules only')
   const claude = getClaudeClient()
   const msg = await claude.messages.create({
     model: CLAUDE_MODEL,

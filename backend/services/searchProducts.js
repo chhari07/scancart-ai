@@ -1,6 +1,8 @@
 // backend/services/searchProducts.js
 // Real product search: Amazon India (scraping works), Flipkart (CAPTCHA-blocked — URL only)
 
+import { isQuickScan } from './scanContext.js'
+
 const SEARCH_TIMEOUT = 8000
 
 const HEADERS = {
@@ -17,6 +19,7 @@ const HEADERS = {
  * Returns up to `maxResults` products with real name, price, image, url.
  */
 export async function searchAmazonIndia(query, maxResults = 3) {
+  if (isQuickScan()) return []
   const url = `https://www.amazon.in/s?k=${encodeURIComponent(query)}&ref=nb_sb_noss`
   try {
     const resp = await fetch(url, { headers: HEADERS, signal: AbortSignal.timeout(SEARCH_TIMEOUT) })

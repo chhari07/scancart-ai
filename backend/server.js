@@ -6,6 +6,8 @@ import helmet from 'helmet'
 import morgan from 'morgan'
 import { scanRouter } from './routes/scan.js'
 import { healthRouter } from './routes/health.js'
+import { priceRouter } from './routes/price.js'
+import { watchRouter } from './routes/watch.js'
 import { initFirebase } from './services/firebase.js'
 import { hasClaudeKey, CLAUDE_MODEL } from './services/claude.js'
 import { rateLimit } from 'express-rate-limit'
@@ -51,19 +53,21 @@ app.use(cors({
     cb(null, allowed)
   },
   credentials: true,
-  methods: ['GET', 'POST', 'OPTIONS'],
+  methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }))
 
 // Rate limit
 app.use('/api/', rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 900_000,
-  max: parseInt(process.env.RATE_LIMIT_MAX) || 100,
+  max: parseInt(process.env.RATE_LIMIT_MAX) || 300,   // page views send a price + quick check, so allow more
   message: { error: 'Too many requests. Try again later.' },
 }))
 
 // ── Routes ─────────────────────────────────────────────────────────
 app.use('/api/scan', scanRouter)
+app.use('/api/price', priceRouter)
+app.use('/api/watch', watchRouter)
 app.use('/health', healthRouter)
 
 // ── Global error handler ───────────────────────────────────────────
@@ -84,7 +88,7 @@ async function start() {
       : `⚠️  ANTHROPIC_API_KEY not set — checks run on backup rules only`)
     console.log(firebaseOk
       ? `🔥  Firebase connected\n`
-      : `⚠️  Firebase not connected — scans and price history are not saved\n`)
+      : `⚠️  Firebase not connected — scans are not saved; price history + watches use backend/data/store.json\n`)
   })
 }
 

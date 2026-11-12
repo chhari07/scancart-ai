@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 delete process.env.ANTHROPIC_API_KEY
+process.env.SCANCART_DATA_DIR = (await import('node:fs')).mkdtempSync((await import('node:path')).join((await import('node:os')).tmpdir(), 'scancart-test-'))
 const { runAgenticScan, dataAvailable } = await import('../services/orchestrator.js')
 
 test('empty page → no verdict built from nothing', async () => {

@@ -7,7 +7,7 @@ export const FUSION_WEIGHTS = {
 
 /**
  * Trust Score fusion:
- *   reviewScore     = 100 - fakePercent - botPercent/2         (weight 20%)
+ *   reviewScore     = 100 - fakePercent - botPercent/2 - 15 if a review-date burst was found (weight 20%)
  *   ratingScore     = ratingCredibilityScore (penalised if above healthy range) (weight 10%)
  *   sellerScore     = sellerTrustScore                          (weight 25%)
  *   priceScore      = priceSuspicious ? 15 : priceScore         (weight 15%)
@@ -26,7 +26,7 @@ export function calculateTrustScore({ review = {}, rating = {}, seller = {}, pri
   // and the remaining weights are re-normalised — a missing check never contributes
   // an invented number. Returns null when no engine produced a result.
   const components = [
-    { key: 'review',     engine: review,     score: () => Math.max(0, 100 - (review.fakePercent ?? 15) - Math.round((review.botPercent ?? 0) / 2)) },
+    { key: 'review',     engine: review,     score: () => Math.max(0, 100 - (review.fakePercent ?? 15) - Math.round((review.botPercent ?? 0) / 2) - (review.dateSpike ? 15 : 0)) },
     { key: 'rating',     engine: rating,     score: () => Math.max(0, (rating.ratingCredibilityScore ?? 65) - (rating.ratingAboveRange ? 20 : 0)) },
     { key: 'seller',     engine: seller,     score: () => seller.sellerTrustScore ?? 65 },
     { key: 'price',      engine: price,      score: () => price.priceSuspicious ? 15 : (price.priceScore ?? 60) },
