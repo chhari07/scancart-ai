@@ -4,3 +4,9 @@ dist/
 backend/serviceAccountKey.json
 backend/data/
 *.backup*
+
+# local only (old images, logs)
+banner.png
+theme.png
+verson_v2.png
+run.log
