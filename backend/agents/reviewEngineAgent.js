@@ -176,7 +176,8 @@ function localReviewAnalysis(d = {}) {
   const numRatings = parseInt(d.numRatings || d.reviewCount || 0)
   const numReviews = parseInt(d.numReviews || 0)
 
-  const ratio = numReviews > 0 ? numRatings / numReviews : numRatings > 0 ? 999 : 1
+  // Unknown written-review count is neutral (ratio 1), never a 999x "fake" signal
+  const ratio = numReviews > 0 ? numRatings / numReviews : 1
 
   let fakePercent = 10
   const redFlags  = []
