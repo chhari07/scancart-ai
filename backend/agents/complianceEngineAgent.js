@@ -150,7 +150,8 @@ function buildPriorPriceCheck(price = {}) {
       : unknownCheck(RULES.PRIOR_PRICE, 'priorPrice', 'No MRP/strikethrough price detected on this listing — discount-claim honesty cannot be evaluated.')
   }
   if (v.discountClaimHonest === false) {
-    return breach(RULES.PRIOR_PRICE, 'priorPrice', 'high',
+    // A small "permanent discount" is common marketing — flag it, but only a big fake sale is a high-severity breach
+    return breach(RULES.PRIOR_PRICE, 'priorPrice', (v.claimedDiscountPercent || 0) >= 25 ? 'high' : 'medium',
       `Listing claims ${v.claimedDiscountPercent}% off, but ScanCart's own ${v.windowDays}-day tracked price for this exact listing ranged Rs.${v.priorLow}-Rs.${v.priorHigh} — today's price is not meaningfully below its recent normal price.`)
   }
   return pass(RULES.PRIOR_PRICE, 'priorPrice', v.isNewLow

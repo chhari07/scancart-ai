@@ -18,8 +18,11 @@ const BROWSER_HEADERS = {
   'Connection': 'keep-alive',
 }
 
-// Trusted platform-owned sellers — always verified
-const PLATFORM_TRUSTED = ['appario', 'cloudtail', 'amazon', 'flipkart', 'myntra', 'nykaa', 'snapdeal retail']
+// Platform-owned / platform-linked large sellers — always verified
+const PLATFORM_TRUSTED = [
+  'appario', 'cloudtail', 'clicktech', 'cocoblu', 'retailez', 'darshita',   // Amazon India's biggest sellers
+  'amazon', 'flipkart', 'retailnet', 'omnitech', 'myntra', 'nykaa', 'snapdeal retail', 'tata cliq', 'ajio',
+]
 
 // Approximate authorized sellers for major brands
 const AUTHORIZED_SELLERS = {
@@ -80,6 +83,9 @@ Category: ${category}
 Seller Profile Data (scraped from ${platform} seller page):
 ${profileInfo}
 
+Trust signals shown on the store page (read by the extension):
+${describeSignals(productData) || '  none found'}
+
 Local analysis baseline:
   sellerTrustScore: ${local.sellerTrustScore}
   sellerVerified: ${local.sellerVerified}
@@ -91,6 +97,8 @@ Evaluate this seller for the Indian market. Consider:
 3. Is the seller a known authorized retailer for this brand/category?
 4. Does the feedback count and rating suggest a legitimate established seller?
 5. Are there any red flags (newly joined, no address, price too low, generic name pattern)?
+IMPORTANT: a seller you do not recognise is NOT a red flag by itself. Products listed on a big Indian
+store, fulfilled by the store, with good ratings and sales, are normal. Only lower trust for real warning signs.
 
 Classify sellerType as one of:
   "brand_official"     — Brand's own store (e.g. "Titan Official Store")
@@ -130,6 +138,7 @@ Return ONLY valid JSON:
       googleSearchUrl,
       gstin:            profile?.gstin || null,  // deterministic scraped fact — never Claude-derived
       confidence:       enhanced.confidence                 || local.confidence,
+      trustSignals:     local.trustSignals,
       source: 'claude', success: true,
     }
   } catch (err) {
@@ -215,22 +224,45 @@ function buildLocationNote(profile, sellerName) {
   return `No address or profile info available for "${sellerName}" — use Google Maps to check legitimacy`
 }
 
+// ── Store trust signals read from the page (extension pageSignals) ────
+function signalsOf(d = {}) {
+  const ps = d.pageSignals || {}
+  const brandWord = (d.brand || (d.productName || d.name || '').split(/\s+/)[0] || '').toLowerCase()
+  const store = (ps.brandStore || '').toLowerCase()
+  return {
+    fulfilled:    Boolean(ps.fulfilledByPlatform),
+    brandStore:   Boolean(store && brandWord && store.includes(brandWord)),
+    choice:       Boolean(ps.platformChoice),
+    bought:       Number(ps.boughtLastMonth) || 0,
+    goodRatings:  parseFloat(d.rating || 0) >= 4 && Number(d.numRatings || d.reviewCount || 0) >= 50,
+  }
+}
+function describeSignals(d) {
+  const s = signalsOf(d), out = []
+  if (s.fulfilled)  out.push('  - Fulfilled / shipped by the store itself')
+  if (s.brandStore) out.push(`  - Listed under the brand's official store page ("${d.pageSignals.brandStore}")`)
+  if (s.choice)     out.push("  - Store badge (Amazon's Choice / Flipkart Assured)")
+  if (s.bought)     out.push(`  - ${s.bought}+ bought in the past month`)
+  if (s.goodRatings) out.push(`  - ${d.rating}★ from ${d.numRatings || d.reviewCount} ratings`)
+  return out.join('\n')
+}
+
 // ── Local heuristic analysis (no API) ─────────────────────────────────
+// Trust-first: a seller we do not recognise is "not in our list", not "bad".
+// Only real warning signs (fake-looking name, price far below normal) lower trust.
 function localSellerAnalysis(d = {}) {
   const seller = (d.seller || '').toLowerCase()
   const price  = d.price || 0
   const name   = (d.productName || d.name || '').toLowerCase()
+  const sig    = signalsOf(d)
 
   let sellerVerified = false
-  let sellerType     = 'new_3p'
+  let sellerType     = seller ? 'not_listed' : 'unknown'
 
-  // Platform-trusted sellers
   if (PLATFORM_TRUSTED.some(s => seller.includes(s))) {
     sellerVerified = true
     sellerType     = 'authorized_reseller'
   }
-
-  // Brand-specific authorized list
   for (const [brand, sellers] of Object.entries(AUTHORIZED_SELLERS)) {
     if (name.includes(brand) && sellers.some(s => seller.includes(s))) {
       sellerVerified = true
@@ -238,35 +270,56 @@ function localSellerAnalysis(d = {}) {
       break
     }
   }
-
-  // Check if this looks like the brand's official store
   const brand = name.split(' ')[0]
   if (brand && seller.includes(brand.toLowerCase()) && (seller.includes('official') || seller.includes('store') || seller.includes('india'))) {
     sellerVerified = true
     sellerType     = 'brand_official'
   }
-
-  // Generic/suspicious patterns
-  const genericPatterns = /^[a-z]+\d{3,}$|shop\d+|seller\d+|store\d+|techzone|deals\d|offers\d/i
-  if (genericPatterns.test(seller) && seller.length < 20) {
-    sellerVerified = false
-    sellerType     = 'suspicious'
+  // Not on our list, but the store itself vouches for the listing → established seller
+  if (!sellerVerified && (sig.fulfilled || sig.brandStore) && (sig.goodRatings || sig.bought >= 50 || sig.choice)) {
+    sellerType = 'established_3p'
   }
 
+  const genericPatterns = /^[a-z]+\d{3,}$|shop\d+|seller\d+|store\d+|techzone|deals\d|offers\d/i
+  const suspiciousName  = genericPatterns.test(seller) && seller.length < 20
+  if (suspiciousName) { sellerVerified = false; sellerType = 'suspicious' }
+
   // No price on the page → no price signal (a price of 0 used to read as "critical").
-  const priceValidation = price > 0 ? validatePrice(price, name) : { risk: 'unknown' }
+  const priceValidation = price > 0 ? validatePrice(price, name, d.mrpPrice || d.mrp || 0) : { risk: 'unknown' }
   const priceSuspicious = priceValidation.risk === 'critical' || priceValidation.risk === 'high'
 
-  let sellerTrustScore = sellerVerified ? 78 : 50
-  if (priceSuspicious) sellerTrustScore -= 20
+  let sellerTrustScore =
+    sellerType === 'brand_official'      ? 88
+    : sellerVerified                     ? 82
+    : sellerType === 'established_3p'    ? 76
+    : sellerType === 'suspicious'        ? 35
+    : 66                                  // not in our list, no warning signs → neutral
+  if (!suspiciousName) {
+    if (sig.fulfilled)   sellerTrustScore += 6
+    if (sig.brandStore)  sellerTrustScore += 4
+    if (sig.choice)      sellerTrustScore += 3
+    if (sig.bought >= 100) sellerTrustScore += 3
+    if (sig.goodRatings) sellerTrustScore += 3
+  }
+  if (priceSuspicious) sellerTrustScore -= 25
   if (priceValidation.risk === 'medium') sellerTrustScore -= 8
   sellerTrustScore = clamp(sellerTrustScore, 10, 95)
 
   const counterfeitRisk =
     priceValidation.risk === 'critical' ? 'critical'
     : priceValidation.risk === 'high'   ? 'high'
-    : !sellerVerified                   ? 'medium'
+    : suspiciousName                    ? 'medium'
+    : priceValidation.risk === 'medium' && !sellerVerified && sellerType !== 'established_3p' ? 'medium'
     : 'low'
+
+  const who = d.seller || 'This seller'
+  const sellerHistory =
+    sellerType === 'brand_official'      ? `${who} is the brand's own store`
+    : sellerVerified                     ? `${who} is a known large seller on ${d.platform || 'this store'}`
+    : sellerType === 'established_3p'    ? `${who} isn't in ScanCart's seller list yet, but the store fulfils this listing and it has good ratings — no warning signs`
+    : sellerType === 'suspicious'        ? `${who} has a generic, throw-away style name — check the seller before buying`
+    : seller                             ? `${who} isn't in ScanCart's seller list yet — no warning signs found`
+    : 'The seller name was not shown on the page'
 
   return {
     sellerRating:     null,   // not on the product page; never invent one
@@ -275,9 +328,8 @@ function localSellerAnalysis(d = {}) {
     sellerType,
     counterfeitRisk,
     priceSuspicious,
-    sellerHistory: sellerVerified
-      ? `Recognized seller with good standing on ${d.platform || 'platform'}`
-      : `Seller "${d.seller || 'Unknown'}" could not be verified as an authorized retailer`,
+    trustSignals: sig,
+    sellerHistory,
     confidence: seller ? 55 : 25,
   }
 }

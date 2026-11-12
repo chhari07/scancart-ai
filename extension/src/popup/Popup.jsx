@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Loader2 } from 'lucide-react'
 import { useScan } from '../hooks/useScan'
 import { LoginView      } from './views/LoginView'
-import { ReadyView      } from './views/ReadyView'
+import { PanelView      } from './views/PanelView'
 import { NotProductView } from './views/NotProductView'
 import { ScanningView   } from './views/ScanningView'
 import { ResultsView    } from './views/ResultsView'
@@ -22,6 +22,8 @@ export default function Popup() {
   const [product, setProduct]   = useState(null)        // what the content script read from the page
   const [user, setUser]         = useState(null)        // signed-in user synced from the website
   const [tabId, setTabId]       = useState(null)
+  const [tabUrl, setTabUrl]     = useState('')
+  const [productRead, setProductRead] = useState(false)
   const [status, setStatus]     = useState(null)        // score the page already has (quick / full)
   const { scanning, results, stageIndex, error, scan, reset } = useScan()
 
@@ -32,8 +34,9 @@ export default function Popup() {
         const plat  = detectPlatformFromUrl(tab?.url || '')
         setPlatform(plat)
         setTabId(tab?.id ?? null)
+        setTabUrl(tab?.url || '')
         if (plat && tab?.id != null) {
-          readProduct(tab.id).then(setProduct)
+          readProduct(tab.id).then(p => { setProduct(p); setProductRead(true) })
           askTab(tab.id, { type: 'SCANCART_GET_STATUS' }).then(st => st && setStatus(st))
         }
 
@@ -67,15 +70,6 @@ export default function Popup() {
     chrome.runtime.onMessage.addListener(onMsg)
     return () => chrome.runtime.onMessage.removeListener(onMsg)
   }, [tabId])
-
-  // Hand over to the on-page panel (main view). If the page script is not there
-  // (page opened before the extension was installed/updated), scan here instead.
-  const openOnPage = async option => {
-    const r = tabId != null ? await askTab(tabId, { type: 'SCANCART_OPEN_PANEL', option }) : null
-    if (r?.opened) { window.close(); return }
-    if (option === 'alternatives') { openSite('/dashboard'); return }
-    scan()
-  }
 
   const signOut = async () => {
     await chrome.storage.local.remove('scancart_user')
@@ -120,12 +114,11 @@ export default function Popup() {
         <div className="sc-body"><LoginView onLogin={() => openSite('/sign-in')} onSignup={() => openSite('/sign-up')} /></div>
       )}
 
-      {appState === 'ready' && (
-        <div className="sc-body">
-          {platform
-            ? <ReadyView platform={platform} product={product} status={status} onOpen={openOnPage} error={error} />
-            : <NotProductView />}
-        </div>
+      {appState === 'ready' && (platform
+        ? (productRead
+            ? <PanelView product={product} url={tabUrl} tabId={tabId} status={status} />
+            : <div className="sc-loading"><Loader2 size={26} color="#2563EB" className="sc-spin" /></div>)
+        : <div className="sc-body"><NotProductView /></div>
       )}
 
       {appState === 'scanning' && (

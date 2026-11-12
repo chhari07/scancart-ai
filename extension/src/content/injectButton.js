@@ -3,6 +3,7 @@
 // Electric Blue (#2563EB) button, dark panel.
 import { analyzeProduct, fetchAlternatives } from '../services/aiAnalysis'
 import { addWatch, findWatch, removeWatch } from '../services/priceWatch'
+import { whereToBuy } from '../utils/stores'
 
 const HOST_ID = 'scancart-host'
 
@@ -11,6 +12,10 @@ let _shadowRoot  = null
 let _priceInfo   = null   // { points, summary, discount } from /api/price/observe on page load
 let _quick       = null   // quick badge result
 let _full        = null   // full scan score (number) once the user ran a check
+let _aiOn        = true   // false when the backend ran basic rules only (no AI)
+let _tabId       = null
+let _pageUrl     = null   // set when the panel runs inside the toolbar popup (not on the page)
+const _url = () => _pageUrl || window.location.href
 
 // What the page knows right now — the toolbar popup reads this (one source of truth)
 export function getPageStatus() {
@@ -19,8 +24,50 @@ export function getPageStatus() {
     full: typeof _full === 'number' ? _full : null,
   }
 }
+function _renderStrip() {
+  const el = _shadowRoot?.getElementById('sc-score-strip')
+  if (!el) return
+  const st = getPageStatus()
+  const score = st.full ?? st.quick?.trustScore
+  if (typeof score !== 'number') { el.innerHTML = ''; return }
+  const [, words] = _fabTone(score)
+  const col = score >= 70 ? '#16A34A' : score >= 45 ? '#F59E0B' : '#DC2626'
+  const fakeSale = st.full == null && st.quick?.discount === 'fake_sale'
+  el.innerHTML = `<div class="sc-score-strip" style="border-color:${col}55">
+    <div class="n" style="background:${col}">${score}</div>
+    <div><div class="w" style="color:${col}">${fakeSale ? 'Sale looks fake' : words}</div>
+    <div class="s">${st.full != null ? 'Full check' : 'Quick check from page data'} · tap a check below for details</div></div></div>`
+}
 function _announce() {
+  _renderStrip()
   try { chrome.runtime.sendMessage({ type: 'SCANCART_STATUS', status: getPageStatus() }) } catch {}
+}
+
+/**
+ * Draw the same panel inside the toolbar popup (its main screen).
+ * The popup passes what the page's script read: product, page URL, tab id and the page's score.
+ */
+export function mountInline(container, { product = null, url = null, tabId = null, status = null } = {}) {
+  _productData = product
+  _pageUrl = url
+  _tabId = tabId
+  _quick = status?.quick ? { trustScore: status.quick.trustScore, discount: status.quick.discount ? { status: status.quick.discount } : null } : null
+  _full = typeof status?.full === 'number' ? status.full : null
+  _shadowRoot = container.shadowRoot || container.attachShadow({ mode: 'open' })
+  _shadowRoot.innerHTML = `<style>${_CSS}</style>${_buildHTML(product)}`
+  _shadowRoot.getElementById('sc-fab')?.remove()
+  _shadowRoot.getElementById('sc-backdrop')?.remove()
+  _shadowRoot.getElementById('sc-panel').classList.add('sc-inline')
+  _setupOptions()
+  _renderStrip()
+  return {
+    setStatus(st) {
+      if (st?.quick) _quick = { trustScore: st.quick.trustScore, discount: st.quick.discount ? { status: st.quick.discount } : null }
+      if (typeof st?.full === 'number') _full = st.full
+      _renderStrip()
+    },
+    open(option) { if (option) _handleOption(option) },
+  }
 }
 
 /** Open the panel from the toolbar popup, optionally straight into one check. */
@@ -298,6 +345,37 @@ const _CSS = `
 .sc-watch-btn { height: 38px; border: 0; border-radius: 999px; background: #0F172A; color: #fff; font: inherit; font-size: 12.5px; font-weight: 700; padding: 0 16px; cursor: pointer; white-space: nowrap; }
 .sc-watch-btn.ghost { background: #fff; color: #0F172A; border: 1px solid #E2E8F0; }
 .sc-watch-note { font-size: 11px; color: #64748B; line-height: 1.45; }
+
+/* ── Real vs fake reviews ── */
+.sc-rv-group { background: #fff; border: 1px solid #E2E8F0; border-radius: 16px; padding: 4px 12px; }
+.sc-rv-group summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 9px 0; font-size: 12.5px; font-weight: 800; color: #0F172A; }
+.sc-rv-group summary::-webkit-details-marker { display: none; }
+.sc-rv-group summary b { margin-left: auto; font-size: 11px; color: #64748B; background: #F1F5F9; border-radius: 999px; padding: 1px 8px; }
+.sc-rv-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.sc-rv-dot.real { background: #16A34A; } .sc-rv-dot.fake { background: #DC2626; } .sc-rv-dot.unclear { background: #94A3B8; }
+.sc-rv { border-top: 1px solid #F1F5F9; padding: 9px 0 10px 10px; border-left: 3px solid transparent; margin-left: -12px; padding-left: 12px; }
+.sc-rv.real { border-left-color: #16A34A; } .sc-rv.fake { border-left-color: #DC2626; } .sc-rv.unclear { border-left-color: #CBD5E1; }
+.sc-rv-txt { font-size: 12px; color: #334155; line-height: 1.5; }
+.sc-rv.fake .sc-rv-txt { color: #64748B; }
+.sc-rv-why { font-size: 10.5px; font-weight: 700; margin-top: 4px; }
+.sc-rv.real .sc-rv-why { color: #15803D; } .sc-rv.fake .sc-rv-why { color: #DC2626; } .sc-rv.unclear .sc-rv-why { color: #94A3B8; }
+
+/* ── Where to buy ── */
+.sc-store { align-items: center; }
+.sc-store-rate { width: 46px; height: 46px; border-radius: 12px; flex-shrink: 0; color: #fff; font-size: 15px; font-weight: 900; display: flex; align-items: center; justify-content: center; letter-spacing: -.02em; }
+.sc-store-rate span { font-size: 9px; font-weight: 700; opacity: .8; margin-left: 1px; }
+.sc-store-note { font-size: 10.5px; color: #94A3B8; line-height: 1.45; margin: -2px 2px 4px; }
+
+/* ── Inline mode: the same panel as the toolbar popup's main screen ── */
+#sc-panel.sc-inline { display: flex; position: static; width: 100%; height: auto; min-height: 520px; border: 0; border-radius: 0; box-shadow: none; animation: none; }
+#sc-panel.sc-inline .sc-ph { display: none; }
+#sc-panel.sc-inline .sc-pb { overflow: visible; }
+
+/* ── Score strip (quick or full score, same number as the button) ── */
+.sc-score-strip { margin: 0 14px 12px; display: flex; align-items: center; gap: 12px; border-radius: 16px; padding: 10px 12px; background: #fff; border: 1.5px solid #E2E8F0; }
+.sc-score-strip .n { width: 42px; height: 42px; border-radius: 12px; color: #fff; font-size: 18px; font-weight: 900; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.sc-score-strip .w { font-size: 13.5px; font-weight: 800; }
+.sc-score-strip .s { font-size: 11px; color: #64748B; }
 .sc-section-lbl { font-size: 10.5px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: .12em; }
 `
 
@@ -317,6 +395,7 @@ function _buildHTML(productData) {
 
       <div class="sc-pb">
         <div id="sc-product-section">${_productHTML(productData)}</div>
+        <div id="sc-score-strip"></div>
         <div id="sc-content">${_optionsHTML()}</div>
       </div>
     </div>
@@ -369,7 +448,7 @@ const OPTS = [
   { key: 'reviews',      icon: P.search,  color: '#7C3AED', bg: '#F3E8FF', label: 'Fake reviews',           desc: 'Fake, bot and real reviews'          },
   { key: 'seller',       icon: P.store,   color: '#2563EB', bg: '#DBEAFE', label: 'Seller trust',           desc: 'Seller history and trust tier'       },
   { key: 'price',        icon: P.rupee,   color: '#0891B2', bg: '#CFFAFE', label: 'Real price & discount',  desc: 'Fake sale check, price on other stores' },
-  { key: 'alternatives', icon: P.bulb,    color: '#CA8A04', bg: '#FEF9C3', label: 'Cheaper options',        desc: 'Optional · takes 10–30 s'            },
+  { key: 'alternatives', icon: P.bulb,    color: '#CA8A04', bg: '#FEF9C3', label: 'Where to buy & alternatives', desc: 'Trusted stores rated · similar products' },
 ]
 
 function _optionsHTML() {
@@ -439,9 +518,11 @@ async function _handleOption(option) {
 
   try {
     // Alternatives have their own on-demand endpoint so they never slow down or fail a scan
+    // Alternatives: the "where to buy" store list works offline, so a failed search still shows it
     const result = option === 'alternatives'
-      ? { ...(await fetchAlternatives(window.location.href, _productData) || {}), productPrice: _productData?.price || 0 }
-      : await analyzeProduct(window.location.href, _productData)
+      ? { ...(await fetchAlternatives(_url(), _productData).catch(() => ({ altFailed: true })) || {}), productPrice: _productData?.price || 0 }
+      : await analyzeProduct(_url(), _productData)
+    if (option !== 'alternatives') _aiOn = result.aiUsed !== false
     clearInterval(iv)
     cnt.innerHTML = _resultHTML(option, result)
     _shadowRoot.querySelector('.sc-back-btn')?.addEventListener('click', e => {
@@ -452,13 +533,17 @@ async function _handleOption(option) {
     if (option === 'alternatives') _setupAltCards()
     if (option === 'price') _setupWatch()
     // Wire up data-href clicks (price best-found card, etc.) via event delegation
-    cnt.querySelectorAll('[data-href]').forEach(el => {
+    cnt.querySelectorAll('[data-href]:not(.sc-alt-grid [data-href])').forEach(el => {
       el.addEventListener('click', () => {
         const url = el.dataset.href
         if (url) window.open(url, '_blank', 'noopener')
       })
     })
-    if (result.trustScore !== undefined) setFabResult(result.trustScore)
+    if (result.trustScore !== undefined) {
+      setFabResult(result.trustScore)
+      // Running inside the popup → tell the page's button too
+      if (_pageUrl && _tabId != null) { try { chrome.tabs.sendMessage(_tabId, { type: 'SCAN_COMPLETE', trustScore: result.trustScore }) } catch {} }
+    }
   } catch (err) {
     clearInterval(iv)
     cnt.innerHTML = `
@@ -502,8 +587,10 @@ function _stats(...items) {
   return `<div class="sc-stats">${items.map(([v,k,c])=>`<div class="sc-stat"><span class="sc-stat-v"${c?` style="color:${c}"`:''}>${v}</span><span class="sc-stat-k">${k}</span></div>`).join('')}</div>`
 }
 function _aiBox(txt) {
-  return `<div class="sc-ai-box"><div class="sc-ai-box-title">${_ic(P.zap,13,'#2563EB')} What the AI found</div><p class="sc-ai-box-txt">${txt}</p></div>`
+  const title = _aiOn ? 'What the AI found' : 'What ScanCart found · basic check (no AI)'
+  return `<div class="sc-ai-box"><div class="sc-ai-box-title">${_ic(P.zap,13,'#2563EB')} ${title}</div><p class="sc-ai-box-txt">${txt}</p></div>`
 }
+const _esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 function _verdict(txt, level) {
   const cls = level==='green'?'sc-verdict-green':level==='red'?'sc-verdict-red':'sc-verdict-yellow'
   return `<div class="sc-verdict ${cls}">${txt}</div>`
@@ -513,25 +600,36 @@ function _verdict(txt, level) {
 function _reviewResult(r) {
   if (r.fakeReviewPercent == null) {
     return `
-    ${_rHead(P.search,'#7C3AED','rgba(124,58,237,0.15)','Fake Review Analysis','AI authenticity detection','N/A','#9CA3AF')}
+    ${_rHead(P.search,'#7C3AED','rgba(124,58,237,0.15)','Fake Review Check','Real vs fake reviews','N/A','#9CA3AF')}
     ${_aiBox('The review check could not run for this scan, so it was left out of the Trust Score.')}`
   }
   const fake  = r.fakeReviewPercent||0
   const total = r.totalReviews||0
   const c     = fake<20?'#16A34A':fake<50?'#CA8A04':'#DC2626'
   const risk  = fake<20?'LOW RISK':fake<50?'MEDIUM':'HIGH RISK'
-  const insight = fake<20
-    ? `From the rating counts and the review texts on this page, about ${fake}% of ${total.toLocaleString('en-IN')} ratings look suspicious. The star rating looks reliable.`
-    : fake<50
-    ? `${fake}% of ${total.toLocaleString('en-IN')} reviews look manipulated. Filter by "Verified Purchase" before deciding.`
-    : `ALERT: ${fake}% of reviews are likely fake. The star rating is heavily inflated — do not trust it.`
+  const S     = r.reviewSamples || { checked: 0, real: [], fake: [], unclear: [] }
+  const insight = S.checked
+    ? `ScanCart read the ${S.checked} review${S.checked > 1 ? 's' : ''} shown on this page: ${S.real.length} look real, ${S.fake.length} look fake, ${S.unclear.length} too short to judge. Across all ${total.toLocaleString('en-IN')} ratings, about ${fake}% look suspicious from the rating pattern.`
+    : `No review texts were visible on this page. From the rating pattern, about ${fake}% of ${total.toLocaleString('en-IN')} ratings look suspicious.`
+  const quote = (x, kind) => `
+    <div class="sc-rv ${kind}">
+      <p class="sc-rv-txt">“${_esc(x.text.length > 260 ? x.text.slice(0, 257) + '…' : x.text)}”</p>
+      ${x.why ? `<p class="sc-rv-why">${kind === 'real' ? '✓' : kind === 'fake' ? '⚠' : '·'} ${_esc(x.why)}</p>` : ''}
+    </div>`
+  const group = (title, list, kind, open) => list.length ? `
+    <details class="sc-rv-group ${kind}"${open ? ' open' : ''}>
+      <summary><span class="sc-rv-dot ${kind}"></span>${title} <b>${list.length}</b></summary>
+      ${list.map(x => quote(x, kind)).join('')}
+    </details>` : ''
   return `
-    ${_rHead(P.search,'#7C3AED','rgba(124,58,237,0.15)','Fake Review Analysis','AI authenticity detection',risk,c)}
-    ${_trustBar(r.trustScore)}
-    ${_stats([total.toLocaleString('en-IN'),'Total',null],[`${fake}%`,'Suspicious',c],[`${100-fake}%`,'Genuine','#16A34A'])}
+    ${_rHead(P.search,'#7C3AED','rgba(124,58,237,0.15)','Fake Review Check','Real vs fake reviews on this page',risk,c)}
+    ${_stats([S.real.length,'Look real','#16A34A'],[S.fake.length,'Look fake',S.fake.length?'#DC2626':null],[`${fake}%`,'Suspicious overall',c])}
     ${_aiBox(insight)}
+    ${group('Real reviews — read these', S.real, 'real', true)}
+    ${group('Look fake', S.fake, 'fake', S.real.length === 0)}
+    ${group('Too short to judge', S.unclear, 'unclear', false)}
     ${r.reviewSpike?.checked ? _verdict(r.reviewSpike.note, r.reviewSpike.spike ? 'red' : 'green') : ''}
-    ${r.reviewSpike?.spike && fake<20 ? _verdict('Review burst found — read the newest reviews carefully','yellow') : _verdict(fake<20?'Reviews look genuine — rating looks trustworthy':fake<50?'Partially inflated — read carefully':'Reviews unreliable — do not trust rating',fake<20?'green':fake<50?'yellow':'red')}
+    ${_verdict(fake<20?'Reviews look genuine — rating looks trustworthy':fake<50?'Partly inflated — trust the real reviews above':'Reviews unreliable — do not trust the star rating',fake<20?'green':fake<50?'yellow':'red')}
   `
 }
 
@@ -589,49 +687,73 @@ function _priceResult(r) {
 function _sellerResult(r) {
   const rat   = r.sellerRating || 0
   const ver   = r.sellerVerified
-  const risk  = r.counterfeitRisk || 'medium'
-  const type  = r.sellerType || ''
+  const risk  = r.counterfeitRisk || 'low'
+  const type  = r.sellerType || 'unknown'
+  const sig   = r.sellerTrustSignals || {}
+  const warn  = risk === 'medium' || risk === 'high' || risk === 'critical'
   const c     = rat >= 4 ? '#16A34A' : rat >= 3 ? '#CA8A04' : '#DC2626'
-  const trusted = ver && rat >= 4 && risk === 'low'
 
-  // Build insight ONLY from structured boolean/enum fields — never from backend narrative text
-  // (r.analysis.sellerHistory can contradict sellerVerified when Claude and local logic diverge)
-  const TYPE_LABEL = {
-    brand_official:      "Brand's official store",
-    authorized_reseller: 'Authorized reseller',
-    established_3p:      'Established third-party seller',
-    new_3p:              'New or low-history seller',
-    suspicious:          'Suspicious seller pattern',
+  const LABEL = {
+    brand_official:      ["Brand's official store", 'OFFICIAL',  '#16A34A'],
+    authorized_reseller: ['Known large seller',     'VERIFIED',  '#16A34A'],
+    established_3p:      ['Established seller',     'TRUSTED',   '#16A34A'],
+    not_listed:          ['Not in our list yet',    'NO WARNINGS','#64748B'],
+    new_3p:              ['New seller',             'CHECK',     '#CA8A04'],
+    suspicious:          ['Suspicious seller',      'WARNING',   '#DC2626'],
+    unknown:             ['Seller not shown',       'UNKNOWN',   '#64748B'],
   }
-  let insight
-  if (trusted) {
-    insight = `${TYPE_LABEL[type] || 'Verified seller'} with a ${rat}/5 rating — safe to purchase from this seller.`
-  } else if (!ver && (risk === 'high' || risk === 'critical')) {
-    insight = `Seller "${r.sellerName || 'Unknown'}" is unverified with ${risk} counterfeit risk. ${rat > 0 ? `Seller rating: ${rat}/5.` : ''} Verify independently before buying.`
-  } else if (!ver) {
-    insight = `Seller "${r.sellerName || 'Unknown'}" could not be confirmed as an authorized retailer. Exercise caution and check seller reviews.`
-  } else {
-    insight = `${TYPE_LABEL[type] || 'Verified seller'} — confirmed but rating (${rat}/5) is below ideal. Check recent buyer reviews before purchasing.`
-  }
+  const [label, chip0, chipClr0] = LABEL[type] || LABEL.unknown
+  const chip    = warn ? (risk === 'medium' ? 'CHECK' : 'WARNING') : chip0
+  const chipClr = warn ? (risk === 'medium' ? '#CA8A04' : '#DC2626') : chipClr0
 
-  const chip     = trusted ? 'TRUSTED' : !ver ? 'UNVERIFIED' : 'CAUTION'
-  const chipClr  = trusted ? '#16A34A' : !ver ? '#DC2626'    : '#CA8A04'
-  const verdict  = trusted
-    ? 'Trusted verified seller — safe to buy'
-    : !ver ? 'Unverified seller — exercise caution'
-    : 'Verified but mixed — check reviews'
-  const vLevel   = trusted ? 'green' : !ver ? 'red' : 'yellow'
+  const signals = [
+    sig.fulfilled  ? 'Fulfilled by the store' : null,
+    sig.brandStore ? "Brand's store page" : null,
+    sig.choice     ? 'Store badge (Choice / Assured)' : null,
+    sig.bought     ? `${sig.bought}+ bought last month` : null,
+    sig.goodRatings ? 'Good ratings' : null,
+  ].filter(Boolean)
+
+  const insight = r.sellerHistory || r.analysis?.sellerHistory || `${r.sellerName || 'This seller'}: ${label}.`
+  const verdict = risk === 'critical' || risk === 'high'
+    ? ['Warning signs on this listing — check the seller before buying', 'red']
+    : risk === 'medium' ? ['Some doubts — check the seller’s rating and reviews', 'yellow']
+    : ver || type === 'established_3p' || type === 'brand_official' ? ['Seller looks fine', 'green']
+    : ['No warning signs — seller just isn’t in our list yet', 'green']
 
   return `
-    ${_rHead(P.shield,'#2563EB','rgba(37,99,235,0.1)','Seller Trust','History, verification & credibility',chip,chipClr)}
-    ${_trustBar(r.trustScore)}
-    ${_stats([rat > 0 ? `${rat}/5` : '—','Seller rating',rat > 0 ? c : '#94A3B8'],[ver?'Yes':'No','Verified',ver?'#16A34A':'#DC2626'],[risk.toUpperCase(),'Risk',risk==='low'?'#16A34A':risk==='medium'?'#CA8A04':'#DC2626'])}
-    ${_aiBox(insight)}
-    ${_verdict(verdict,vLevel)}
+    ${_rHead(P.shield,'#2563EB','rgba(37,99,235,0.1)','Seller Trust', _esc(r.sellerName || 'Seller'), chip, chipClr)}
+    ${_stats([rat > 0 ? `${rat}/5` : '—','Seller rating',rat > 0 ? c : '#94A3B8'],[_esc(label),'Seller type',chipClr0],[risk.toUpperCase(),'Risk',risk==='low'?'#16A34A':risk==='medium'?'#CA8A04':'#DC2626'])}
+    ${signals.length ? `<div class="sc-sum-badges">${signals.map(t => `<span class="sc-sum-badge" style="color:#15803D;background:#F0FDF4">✓ ${t}</span>`).join('')}</div>` : ''}
+    ${_aiBox(_esc(insight))}
+    ${_verdict(verdict[0], verdict[1])}
   `
 }
 
 /* ── Alternatives ── */
+function _storesHTML() {
+  const stores = whereToBuy({ ..._productData, platform: _productData?.platform })
+  if (!stores.length) return ''
+  return `
+    <p class="sc-opt-head" style="margin:4px 2px 0">Where to buy this product</p>
+    <div class="sc-alt-grid" id="sc-store-grid">
+      ${stores.map(st => `
+        <div class="sc-alt-item sc-store" data-href="${_esc(st.url)}">
+          <div class="sc-store-rate" style="background:${st.rating >= 4.5 ? '#16A34A' : st.rating >= 4 ? '#2563EB' : '#CA8A04'}">${st.rating.toFixed(1)}<span>/5</span></div>
+          <div class="sc-alt-info">
+            <div class="sc-alt-name">${_esc(st.name)}</div>
+            <div class="sc-alt-badges">
+              ${st.official ? '<span class="sc-alt-type-tag" style="background:#F0FDF4;color:#16A34A">OFFICIAL</span>' : ''}
+              ${st.here ? '<span class="sc-alt-type-tag" style="background:#EFF6FF;color:#2563EB">YOU’RE HERE</span>' : ''}
+            </div>
+            <div class="sc-alt-reason">${st.points.map(_esc).join(' · ')}</div>
+          </div>
+          <div class="sc-alt-arrow">${_ic(P.extlink, 14, '#64748B')}</div>
+        </div>`).join('')}
+    </div>
+    <p class="sc-store-note">ScanCart store rating = genuine-product guarantee, brand warranty, returns and seller control. It rates the store, not today’s price — tap to search this product there.</p>`
+}
+
 function _altResult(r) {
   const cur = _productData?.price || r.productPrice || 0
 
@@ -727,11 +849,13 @@ function _altResult(r) {
        </div>`
 
   return `
-    ${_rHead(P.bulb, '#CA8A04', 'rgba(234,179,8,0.1)', 'Cheaper options', 'Similar products on Indian stores',
+    ${_rHead(P.bulb, '#CA8A04', 'rgba(234,179,8,0.1)', 'Where to buy & alternatives', 'Trusted stores + similar products',
       hasReal
         ? (bestSave > 0 ? `SAVE ₹${bestSave.toLocaleString('en-IN')}` : `${realAlts.length} FOUND`)
         : alts.length > 0 ? 'EXPLORE' : 'NONE FOUND',
       '#CA8A04')}
+    ${_storesHTML()}
+    <p class="sc-opt-head" style="margin:6px 2px 0">Similar products${r.altFailed ? ' — search didn’t finish, try again later' : ''}</p>
     <div class="sc-alt-grid" id="sc-alt-grid">${cardsHTML}</div>
     ${_aiBox(insight)}
     ${hasReal
@@ -743,12 +867,14 @@ function _altResult(r) {
 }
 
 function _setupAltCards() {
-  const grid = _shadowRoot.getElementById('sc-alt-grid')
-  if (!grid) return
-  grid.addEventListener('click', e => {
-    const card = e.target.closest('[data-href]')
-    if (card && card.dataset.href) window.open(card.dataset.href, '_blank', 'noopener')
-  })
+  for (const id of ['sc-alt-grid', 'sc-store-grid']) {
+    const grid = _shadowRoot.getElementById(id)
+    if (!grid) continue
+    grid.addEventListener('click', e => {
+      const card = e.target.closest('[data-href]')
+      if (card && card.dataset.href) window.open(card.dataset.href, '_blank', 'noopener')
+    })
+  }
 }
 
 /* ── Summary ── */
@@ -758,22 +884,21 @@ function _summaryResult(r) {
   const fake  = r.fakeReviewPercent
   const ver   = r.sellerVerified
   const sellerKnown = ver != null
-  const risk  = r.counterfeitRisk || 'medium'
+  const risk  = r.counterfeitRisk || 'low'
 
   // Seller badge: unverified OR medium/high/critical risk → always show as caution/unverified,
   // never show "Seller Verified" when the Seller Trust section would show UNVERIFIED.
-  const sellerSafe   = ver && (risk === 'low' || risk === 'medium')
-  const sellerBadge  = !sellerKnown ? 'Seller Unknown' : sellerSafe ? 'Seller Verified' : ver ? 'Seller Caution' : 'Seller Unverified'
-  const sellerClr    = !sellerKnown ? '#9CA3AF' : sellerSafe ? '#2563EB' : ver ? '#CA8A04' : '#DC2626'
-  const sellerBg     = !sellerKnown ? 'rgba(156,163,175,0.1)' : sellerSafe ? 'rgba(37,99,235,0.1)' : ver ? 'rgba(234,179,8,0.1)' : 'rgba(220,38,38,0.1)'
+  // Seller badge follows real warning signs, not "is the seller in our list"
+  const sellerWarn   = ['medium', 'high', 'critical'].includes(r.counterfeitRisk)
+  const sellerBadge  = !sellerKnown ? 'Seller Unknown' : sellerWarn ? (r.counterfeitRisk === 'medium' ? 'Check Seller' : 'Seller Warning') : ver ? 'Seller Verified' : 'Seller OK'
+  const sellerClr    = !sellerKnown ? '#9CA3AF' : sellerWarn ? (r.counterfeitRisk === 'medium' ? '#CA8A04' : '#DC2626') : '#2563EB'
+  const sellerBg     = !sellerKnown ? 'rgba(156,163,175,0.1)' : sellerWarn ? (r.counterfeitRisk === 'medium' ? 'rgba(234,179,8,0.1)' : 'rgba(220,38,38,0.1)') : 'rgba(37,99,235,0.1)'
 
   const reviewsOK    = fake != null && fake < 30
   const hasSavings   = (r.savings || 0) > 0
 
   // Add a note if seller is unverified but overall score looks high — prevent misleading AUTHENTIC
-  const sellerWarning = sellerKnown && !ver && score >= 70
-    ? ' Note: seller is unverified — verify independently before purchasing.'
-    : ''
+  const sellerWarning = ''
 
   const insight = r.analysis?.authenticity
     ? `${r.analysis.authenticity}${sellerWarning}`
@@ -789,14 +914,14 @@ function _summaryResult(r) {
       <span class="sc-sum-badge" style="color:${sellerClr};background:${sellerBg}">${sellerBadge}</span>
       <span class="sc-sum-badge" style="color:${hasSavings?'#16A34A':'#CA8A04'};background:${hasSavings?'rgba(22,163,74,0.1)':'rgba(234,179,8,0.1)'}">${hasSavings?'Save Money':'Fair Price'}</span>
     </div>
-    ${_verdict(score>=70?'Safe to buy — green light from our AI':score>=40?'Proceed with caution — verify key details':'Avoid this product — multiple risk signals',score>=70?'green':score>=40?'yellow':'red')}
+    ${_verdict(score>=70?`Safe to buy — green light from ${_aiOn ? 'our AI' : 'ScanCart’s checks'}`:score>=40?'Proceed with caution — verify key details':'Avoid this product — multiple risk signals',score>=70?'green':score>=40?'yellow':'red')}
   `
 }
 
 /* ═══════════════════════════════════════════════
    PANEL CONTROLS
 ═══════════════════════════════════════════════ */
-function _showPanel()   { _shadowRoot?.getElementById('sc-panel')?.classList.add('open'); _shadowRoot?.getElementById('sc-backdrop')?.classList.add('on') }
+function _showPanel()   { _renderStrip(); _shadowRoot?.getElementById('sc-panel')?.classList.add('open'); _shadowRoot?.getElementById('sc-backdrop')?.classList.add('on') }
 function _hidePanel()   { _shadowRoot?.getElementById('sc-panel')?.classList.remove('open'); _shadowRoot?.getElementById('sc-backdrop')?.classList.remove('on') }
 function _togglePanel() { _shadowRoot?.getElementById('sc-panel')?.classList.contains('open') ? _hidePanel() : _showPanel() }
 
@@ -862,7 +987,7 @@ function _watchHTML() {
 async function _setupWatch() {
   const box = _shadowRoot?.getElementById('sc-watch')
   if (!box) return
-  const url = window.location.href
+  const url = _url()
   const show = (w) => {
     const form = _shadowRoot.getElementById('sc-watch-form'), note = _shadowRoot.getElementById('sc-watch-note')
     if (!w) return

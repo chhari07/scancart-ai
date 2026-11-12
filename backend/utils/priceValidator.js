@@ -38,9 +38,24 @@ export function detectCategory(productName = '') {
   return 'generic'
 }
 
-export function validatePrice(price, productName = '') {
+// Premium models with a well-known price floor in India — far below it usually means fake or a scam
+const PREMIUM_FLOOR = [
+  [/macbook\s*pro/i, 120000], [/macbook/i, 65000], [/iphone/i, 35000], [/ipad\s*pro/i, 60000], [/ipad/i, 25000],
+  [/apple\s*watch/i, 20000], [/airpods\s*pro/i, 15000], [/airpods/i, 8000],
+  [/galaxy\s*(s|z)\s?\d/i, 30000], [/playstation\s*5|\bps5\b/i, 30000], [/dyson/i, 15000],
+]
+
+export function validatePrice(price, productName = '', mrp = 0) {
   const category = detectCategory(productName)
   const range = CATEGORY_MRP[category] || CATEGORY_MRP.generic
+
+  const floor = PREMIUM_FLOOR.find(([re]) => re.test(productName))?.[1]
+  if (floor) {
+    if (price < floor * 0.45) return { risk: 'critical', deviation: (price - floor) / floor, reason: 'far below the usual price of this model' }
+    if (price < floor * 0.65) return { risk: 'high',     deviation: (price - floor) / floor, reason: 'well below the usual price of this model' }
+  }
+  // Selling price a tiny fraction of the printed MRP is a classic fake-listing sign
+  if (mrp > 0 && price > 0 && price < mrp * 0.25 && mrp >= 2000) return { risk: 'high', deviation: (price - mrp) / mrp, reason: 'less than a quarter of the MRP' }
 
   if (price < range.min * 0.40) return { risk: 'critical', deviation: -1 }
   if (price < range.min * 0.60) return { risk: 'high',     deviation: (price - range.min) / range.min }

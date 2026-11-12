@@ -304,3 +304,6 @@ button.sc-opt { width: 100%; border: 0; background: none; cursor: pointer; text-
 button.sc-opt:hover { background: var(--slate-50); }
 .sc-list > button.sc-opt:first-child { border-radius: 18px 18px 0 0; }
 .sc-list > button.sc-opt:last-child  { border-radius: 0 0 18px 18px; }
+
+/* The popup's main screen is the on-page panel drawn inline (PanelView) */
+.sc-panel-host { display: block; width: 100%; }

@@ -5,6 +5,7 @@
 // was slower than the extension's time limit, so one slow agent failed the whole scan.
 // It now runs on demand via runAlternatives() → POST /api/scan/alternatives.
 import { reviewEngineAgent    } from '../agents/reviewEngineAgent.js'
+import { classifyReviews      } from '../utils/reviewClassifier.js'
 import { ratingEngineAgent    } from '../agents/ratingEngineAgent.js'
 import { sellerShieldAgent    } from '../agents/sellerShieldAgent.js'
 import { pricePiggyAgent      } from '../agents/pricePiggyAgent.js'
@@ -137,6 +138,8 @@ export async function runAgenticScan({ url, productData, userId }) {
     totalReviews:                review.totalRatings || productData?.numRatings || productData?.reviewCount || 0,
     reviewTextsAnalysed:         review.reviewTextsAnalysed  || 0,
     similarProductsCompared:     review.similarProductsCompared || 0,
+    // Each review shown on the page, sorted into looks real / looks fake / too short to judge
+    reviewSamples:               classifyReviews(productData?.reviewTexts),
 
     // ── Engine 1B — Rating ──
     ratingDistribution:      rating.estimatedDistribution,
@@ -156,6 +159,8 @@ export async function runAgenticScan({ url, productData, userId }) {
     googleMapsUrl:    seller.googleMapsUrl    || null,
     googleSearchUrl:  seller.googleSearchUrl  || null,
     locationNote:     seller.locationNote     || null,
+    sellerHistory:    seller.sellerHistory    || null,
+    sellerTrustSignals: seller.trustSignals   || null,
 
     // ── Engine 3 — Price ──
     bestPrice: {
@@ -211,6 +216,7 @@ export async function runAgenticScan({ url, productData, userId }) {
     checksCompleted,
     checksTotal: engines.length,
     checksFromBackupRules,
+    aiUsed: checksFromBackupRules < checksCompleted,   // false = basic rules only (no AI key / AI failed)
     agentResults: {
       reviewEngine:         agentStatus(review),
       ratingEngine:         agentStatus(rating),
@@ -370,17 +376,18 @@ function buildAISummary(trustScore, trustLevel, review, rating, seller, price, q
   const TYPE_READABLE = {
     brand_official:      'Brand\'s official store',
     authorized_reseller: 'Authorized reseller',
-    established_3p:      'Established third-party seller',
+    established_3p:      'Established seller (store-fulfilled, good ratings)',
+    not_listed:          'Not in ScanCart\'s seller list yet',
     new_3p:              'New or low-history seller',
     suspicious:          'Suspicious seller pattern',
   }
   const sellerPoints = [
     seller.sellerVerified
       ? `Seller verified — ${TYPE_READABLE[seller.sellerType] || 'trusted seller'}`
-      : `Seller "${seller.sellerName || 'Unknown'}" could not be verified as an authorized retailer`,
+      : seller.sellerHistory || TYPE_READABLE[seller.sellerType] || 'Seller not checked',
   ]
   if (seller.locationNote) sellerPoints.push(seller.locationNote)
-  if (seller.sellerHistory) sellerPoints.push(seller.sellerHistory)
+  if (seller.sellerHistory && seller.sellerVerified) sellerPoints.push(seller.sellerHistory)
   if (seller.priceSuspicious) sellerPoints.push('Price is below expected market range — counterfeit risk elevated')
   sections.push({
     id:      'seller',
@@ -467,10 +474,11 @@ function collectTopEvidence({ review, rating, seller, price, compliance }, n = 3
     candidates.push({ weight: review.fakePercent, text: `${review.fakePercent}% of reviews flagged as fake` })
   if (!rating.unavailable && rating.ratingAboveRange)
     candidates.push({ weight: 40, text: `Rating is statistically above the healthy range (${rating.healthyRangeMin}–${rating.healthyRangeMax})` })
-  if (!seller.unavailable && !seller.sellerVerified)
+  // Only a real warning sign is evidence — "not in our list" is not
+  if (!seller.unavailable && !seller.sellerVerified && ['medium', 'high', 'critical'].includes(seller.counterfeitRisk))
     candidates.push({
       weight: { critical: 90, high: 70, medium: 40 }[seller.counterfeitRisk] ?? 30,
-      text: `Seller "${seller.sellerName || 'Unknown'}" not verified as an authorized retailer (${seller.counterfeitRisk || 'unknown'} counterfeit risk)`,
+      text: `Seller "${seller.sellerName || 'Unknown'}" shows warning signs (${seller.counterfeitRisk} counterfeit risk)`,
     })
   if (price.priceSuspicious)
     candidates.push({

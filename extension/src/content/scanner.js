@@ -206,9 +206,30 @@ export class ProductScanner {
         hasPaymentInfoText:     /\bcash on delivery\b|\bcod\b|\bemi\b|\bpayment options?\b|\bupi\b/.test(text),
         hasCountryOfOriginText: /\bcountry of origin\b|\bmade in india\b|\bmanufactured in\b/.test(text),
         hasBestBeforeText:      /\bbest before\b|\bexpiry date\b|\buse by\b|\bmfg date\b/.test(text),
+        // Store trust signals (the store itself vouches for the listing)
+        fulfilledByPlatform:    /ships from\s*:?\s*amazon|fulfilled by amazon|sold by amazon|flipkart assured|f-assured/.test(text) || Boolean(document.querySelector('#primeBadge, i.a-icon-prime, [data-csa-c-content-id*="prime"], img[src*="fa_62673a"]')),
+        platformChoice:         /amazon'?s choice|flipkart assured|nykaa assured|myntra (assured|fashion assured)/.test(text),
+        brandStore:             this.brandStoreText(),
+        boughtLastMonth:        this.boughtCount(text),
         scopeNote: 'page-text keyword scan (nav/header/footer excluded) — presence only, not per-field extraction',
       }
     } catch { return null }
+  }
+
+  // "Visit the Apple Store" / "Brand: Apple" byline (Amazon), brand link on other stores
+  brandStoreText() {
+    try {
+      const el = document.querySelector('#bylineInfo, a#brand, .brand-name, [data-testid="brand-name"]')
+      const t = (el?.textContent || '').replace(/\s+/g, ' ').trim()
+      return /visit the .+ store|brand:/i.test(t) ? t.slice(0, 80) : ''
+    } catch { return '' }
+  }
+
+  // "100+ bought in past month" / "1K+ bought in past month"
+  boughtCount(text) {
+    const m = text.match(/(\d[\d,.]*)\s*(k)?\+?\s*bought in (the )?past month/)
+    if (!m) return 0
+    return Math.round(parseFloat(m[1].replace(/,/g, '')) * (m[2] ? 1000 : 1))
   }
 
   parseRating(selector) {
