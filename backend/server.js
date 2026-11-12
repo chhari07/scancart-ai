@@ -29,6 +29,7 @@ const ALLOWED_ORIGINS = [
   /^https:\/\/(www\.)?scancart\.ai$/,                // Production website
   /^https:\/\/scancartdemo\.netlify\.app$/,         // Live website (Netlify)
   /^https:\/\/scancart-ai\.vercel\.app$/,           // Live website (Vercel)
+  /^https:\/\/appassets\.androidplatform\.net$/,  // ScanCart Android app (sheet runs from its local assets)
   /^https:\/\/[a-z0-9.-]*\.amazon\.(in|com)/,        // Amazon (content script page origin)
   /^https:\/\/[a-z0-9.-]*\.flipkart\.com/,           // Flipkart
   /^https:\/\/[a-z0-9.-]*\.myntra\.com/,             // Myntra
