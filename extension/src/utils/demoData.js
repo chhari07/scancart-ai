@@ -1,0 +1,390 @@
+// src/utils/demoData.js
+// 5 pre-computed demo products for pitch demonstration.
+// Includes all new fields from the 6-agent upgrade.
+
+export const DEMO_PRODUCTS = {
+  'iphone': {
+    productName: 'Apple iPhone 15 Pro 128GB Natural Titanium',
+    productPrice: 99999, platform: 'amazon',
+    trustScore: 90, trustLevel: 'HIGHLY AUTHENTIC',
+    sellerRating: 4.8, sellerVerified: true,
+    fakeReviewPercent: 12, botReviewPercent: 5, realReviewPercent: 83,
+    reviewRatingRatio: 3.8,
+    totalReviews: 2341, counterfeitRisk: 'low',
+    ratingDistribution: [
+      { stars: 5, percent: 71, label: '5 star' },
+      { stars: 4, percent: 17, label: '4 star' },
+      { stars: 3, percent: 7,  label: '3 star' },
+      { stars: 2, percent: 3,  label: '2 star' },
+      { stars: 1, percent: 2,  label: '1 star' },
+    ],
+    ratingCredibilityScore: 88,
+    ratingHealthyRange: { min: 3.8, max: 4.6 },
+    ratingAboveHealthyRange: false,
+    ratingBelowHealthyRange: false,
+    ratingSuspicionLevel: 'none',
+    bestPrice: { platform: 'Flipkart', price: 89999, url: 'https://www.flipkart.com/search?q=iPhone+15+Pro', savings: 10000 },
+    savings: 10000,
+    alternative: { name: 'OnePlus 12', price: 79999, reason: 'Better battery, Rs. 20000 cheaper', url: 'https://www.amazon.in/s?k=OnePlus+12', image: null, platform: 'amazon' },
+    allAlternatives: [
+      {
+        name: 'Redmi Note 13 Pro', brand: 'Xiaomi', price: 29999, platform: 'amazon',
+        platformUrl: 'https://amazon.in/redmi-note-13-pro', indianBrand: false,
+        whyAlternative: 'Budget option, Rs. 70,000 cheaper with essential features',
+        alternativeType: 'budget',
+        priceAnalysis:  { priceScore: 95, savingsAmount: 70000, savingsPercent: 70, priceVerdict: 'much cheaper' },
+        ratingAnalysis: { ratingScore: 74, ratingCredible: true, ratingInHealthyRange: true, ratingVerdict: 'good' },
+        reviewAnalysis: { reviewScore: 72, estimatedFakePercent: 22, reviewVerdict: 'moderate' },
+        totalAlternativeScore: 80.7, verifiedAlternative: true, overallVerdict: 'Highly Recommended',
+      },
+      {
+        name: 'OnePlus 12 256GB', brand: 'OnePlus', price: 79999, platform: 'amazon',
+        platformUrl: 'https://amazon.in/oneplus-12', indianBrand: false,
+        whyAlternative: 'Better battery and camera, Rs. 20,000 cheaper',
+        alternativeType: 'value',
+        priceAnalysis:  { priceScore: 82, savingsAmount: 20000, savingsPercent: 20, priceVerdict: 'cheaper' },
+        ratingAnalysis: { ratingScore: 78, ratingCredible: true, ratingInHealthyRange: true, ratingVerdict: 'good' },
+        reviewAnalysis: { reviewScore: 75, estimatedFakePercent: 18, reviewVerdict: 'moderate' },
+        totalAlternativeScore: 78.85, verifiedAlternative: true, overallVerdict: 'Recommended',
+      },
+      {
+        name: 'Samsung Galaxy S24', brand: 'Samsung', price: 89999, platform: 'flipkart',
+        platformUrl: 'https://flipkart.com/samsung-galaxy-s24', indianBrand: false,
+        whyAlternative: 'Similar performance, Rs. 10,000 cheaper with better display',
+        alternativeType: 'value',
+        priceAnalysis:  { priceScore: 71, savingsAmount: 10000, savingsPercent: 10, priceVerdict: 'cheaper' },
+        ratingAnalysis: { ratingScore: 82, ratingCredible: true, ratingInHealthyRange: true, ratingVerdict: 'excellent' },
+        reviewAnalysis: { reviewScore: 80, estimatedFakePercent: 14, reviewVerdict: 'trustworthy' },
+        totalAlternativeScore: 78.05, verifiedAlternative: true, overallVerdict: 'Recommended',
+      },
+    ],
+    totalAlternativesFound: 3,
+    alternativeSummary: '3 alternatives found — Redmi Note 13 Pro saves Rs. 70,000',
+    alternatives: [
+      { name: 'OnePlus 12 256GB', brand: 'OnePlus', price: 79999, platform: 'amazon', url: 'https://www.amazon.in/s?k=OnePlus+12', image: null, reason: 'Better battery, Rs. 20000 cheaper', type: 'value', savings: 20000 },
+      { name: 'Samsung Galaxy S24', brand: 'Samsung', price: 89999, platform: 'flipkart', url: 'https://www.flipkart.com/search?q=Samsung+Galaxy+S24', image: null, reason: 'Similar flagship specs', type: 'value', savings: 10000 },
+    ],
+    analysis: {
+      reviewPattern: 'Healthy distribution over 6 months',
+      ratingAnalysis: 'Rating 4.4 within healthy electronics range (3.8–4.6)',
+      sellerHistory: '5-year account, 98% positive feedback',
+      priceFair: 'Within standard market range',
+      authenticity: 'High confidence — Genuine product (low counterfeit risk)',
+    },
+  },
+
+  'fake-watch': {
+    productName: 'Apple Watch Series 9 Imported',
+    productPrice: 8999, platform: 'amazon',
+    trustScore: 22, trustLevel: 'AVOID',
+    sellerRating: 2.1, sellerVerified: false,
+    fakeReviewPercent: 78, botReviewPercent: 35, realReviewPercent: 12,
+    reviewRatingRatio: 15.8,
+    totalReviews: 456, counterfeitRisk: 'critical',
+    ratingDistribution: [
+      { stars: 5, percent: 91, label: '5 star' },
+      { stars: 4, percent: 5,  label: '4 star' },
+      { stars: 3, percent: 2,  label: '3 star' },
+      { stars: 2, percent: 1,  label: '2 star' },
+      { stars: 1, percent: 1,  label: '1 star' },
+    ],
+    ratingCredibilityScore: 18,
+    ratingHealthyRange: { min: 3.8, max: 4.6 },
+    ratingAboveHealthyRange: true,
+    ratingBelowHealthyRange: false,
+    ratingSuspicionLevel: 'high',
+    bestPrice: { platform: 'Apple India', price: 41900, url: 'https://www.apple.com/in/shop', savings: 0 },
+    savings: 0,
+    alternative: { name: 'Apple Watch SE Genuine', price: 29900, reason: 'Authentic, full warranty included', url: 'https://www.amazon.in/s?k=Apple+Watch+SE', image: null, platform: 'amazon' },
+    allAlternatives: [
+      {
+        name: 'Apple Watch SE 2nd Gen', brand: 'Apple', price: 29900, platform: 'amazon',
+        platformUrl: 'https://amazon.in/apple-watch-se-2nd-gen', indianBrand: false,
+        whyAlternative: 'Genuine Apple product with full warranty and service',
+        alternativeType: 'value',
+        priceAnalysis:  { priceScore: 90, savingsAmount: 12000, savingsPercent: 29, priceVerdict: 'much cheaper' },
+        ratingAnalysis: { ratingScore: 85, ratingCredible: true, ratingInHealthyRange: true, ratingVerdict: 'excellent' },
+        reviewAnalysis: { reviewScore: 82, estimatedFakePercent: 12, reviewVerdict: 'trustworthy' },
+        totalAlternativeScore: 86.05, verifiedAlternative: true, overallVerdict: 'Highly Recommended',
+      },
+      {
+        name: 'Noise ColorFit Pro 5', brand: 'Noise', price: 3499, platform: 'amazon',
+        platformUrl: 'https://www.amazon.in/s?k=Noise+ColorFit+Pro+5', indianBrand: true,
+        whyAlternative: 'Indian brand, reliable, Rs. 5500 cheaper than the fake',
+        alternativeType: 'budget',
+        priceAnalysis:  { priceScore: 95, savingsAmount: 5500, savingsPercent: 61, priceVerdict: 'much cheaper' },
+        ratingAnalysis: { ratingScore: 72, ratingCredible: true, ratingInHealthyRange: true, ratingVerdict: 'good' },
+        reviewAnalysis: { reviewScore: 78, estimatedFakePercent: 15, reviewVerdict: 'moderate' },
+        totalAlternativeScore: 82.3, verifiedAlternative: true, overallVerdict: 'Highly Recommended',
+      },
+    ],
+    totalAlternativesFound: 2,
+    alternativeSummary: '2 legitimate alternatives — Apple Watch SE saves Rs. 12,000 vs the fake price',
+    alternatives: [
+      { name: 'Apple Watch SE (2nd Gen)', brand: 'Apple', price: 29900, platform: 'amazon', url: 'https://www.amazon.in/s?k=Apple+Watch+SE', image: null, reason: 'Authentic, full warranty included', type: 'value', savings: 0 },
+      { name: 'Noise ColorFit Pro 5', brand: 'Noise', price: 3499, platform: 'amazon', url: 'https://www.amazon.in/s?k=Noise+ColorFit+Pro+5', image: null, reason: 'Indian brand, reliable, Rs. 5500 cheaper', type: 'budget', savings: 5500 },
+    ],
+    analysis: {
+      reviewPattern: 'Suspicious — bulk reviews posted same day',
+      ratingAnalysis: 'Rating 4.9 is above healthy range (3.8–4.6) — manipulation likely',
+      sellerHistory: 'New account, multiple fraud complaints',
+      priceFair: '78% below genuine MRP is a major red flag',
+      authenticity: 'HIGH RISK — Likely counterfeit (critical risk, 78% fake reviews)',
+    },
+  },
+
+  'samsung-tv': {
+    productName: 'Samsung 55 inch QLED 4K Smart TV',
+    productPrice: 65999, platform: 'flipkart',
+    trustScore: 92, trustLevel: 'HIGHLY AUTHENTIC',
+    sellerRating: 4.9, sellerVerified: true,
+    fakeReviewPercent: 8, botReviewPercent: 6, realReviewPercent: 86,
+    reviewRatingRatio: 2.9,
+    totalReviews: 5123, counterfeitRisk: 'low',
+    ratingDistribution: [
+      { stars: 5, percent: 68, label: '5 star' },
+      { stars: 4, percent: 20, label: '4 star' },
+      { stars: 3, percent: 7,  label: '3 star' },
+      { stars: 2, percent: 3,  label: '2 star' },
+      { stars: 1, percent: 2,  label: '1 star' },
+    ],
+    ratingCredibilityScore: 85,
+    ratingHealthyRange: { min: 3.7, max: 4.5 },
+    ratingAboveHealthyRange: false,
+    ratingBelowHealthyRange: false,
+    ratingSuspicionLevel: 'none',
+    bestPrice: { platform: 'Samsung.com', price: 64990, url: 'https://www.samsung.com/in', savings: 1009 },
+    savings: 1009,
+    alternative: { name: 'Sony Bravia 55 inch 4K', price: 61999, reason: 'Better picture, Rs. 4000 cheaper', url: 'https://www.amazon.in/s?k=Sony+Bravia+55+4K', image: null, platform: 'amazon' },
+    allAlternatives: [
+      {
+        name: 'Sony Bravia 55" 4K', brand: 'Sony', price: 61999, platform: 'amazon',
+        platformUrl: 'https://www.amazon.in/s?k=Sony+Bravia+55+4K', indianBrand: false,
+        whyAlternative: 'Better picture quality, Rs. 4000 cheaper',
+        alternativeType: 'value',
+        priceAnalysis:  { priceScore: 72, savingsAmount: 4000, savingsPercent: 6, priceVerdict: 'cheaper' },
+        ratingAnalysis: { ratingScore: 81, ratingCredible: true, ratingInHealthyRange: true, ratingVerdict: 'excellent' },
+        reviewAnalysis: { reviewScore: 79, estimatedFakePercent: 12, reviewVerdict: 'trustworthy' },
+        totalAlternativeScore: 77.7, verifiedAlternative: true, overallVerdict: 'Recommended',
+      },
+      {
+        name: 'LG OLED 55" 4K', brand: 'LG', price: 74999, platform: 'flipkart',
+        platformUrl: 'https://www.flipkart.com/search?q=LG+OLED+55+4K', indianBrand: false,
+        whyAlternative: 'Superior OLED panel for cinema quality',
+        alternativeType: 'premium',
+        priceAnalysis:  { priceScore: 30, savingsAmount: 0, savingsPercent: 0, priceVerdict: 'more expensive' },
+        ratingAnalysis: { ratingScore: 88, ratingCredible: true, ratingInHealthyRange: true, ratingVerdict: 'excellent' },
+        reviewAnalysis: { reviewScore: 83, estimatedFakePercent: 10, reviewVerdict: 'trustworthy' },
+        totalAlternativeScore: 65.9, verifiedAlternative: true, overallVerdict: 'Recommended',
+      },
+    ],
+    totalAlternativesFound: 2,
+    alternativeSummary: '2 TV alternatives — Sony Bravia saves Rs. 4,000',
+    alternatives: [
+      { name: 'Sony Bravia 55" 4K', brand: 'Sony', price: 61999, platform: 'amazon', url: 'https://www.amazon.in/s?k=Sony+Bravia+55+4K', image: null, reason: 'Better picture quality, Rs. 4000 cheaper', type: 'value', savings: 4000 },
+      { name: 'LG OLED 55" 4K', brand: 'LG', price: 74999, platform: 'flipkart', url: 'https://www.flipkart.com/search?q=LG+OLED+55+4K', image: null, reason: 'Superior OLED panel for cinema quality', type: 'premium', savings: -9000 },
+    ],
+    analysis: {
+      reviewPattern: 'Excellent — well spread over 2 years',
+      ratingAnalysis: 'Rating 4.5 at top of healthy appliance range (3.7–4.5)',
+      sellerHistory: 'Samsung Smart Plaza authorized retailer',
+      priceFair: 'Competitive — within 1% of official Samsung price',
+      authenticity: 'High confidence — Genuine product (low counterfeit risk)',
+    },
+  },
+
+  'lakme-foundation': {
+    productName: 'Lakme Absolute Mattereal Mousse Foundation',
+    productPrice: 750, platform: 'nykaa',
+    trustScore: 78, trustLevel: 'AUTHENTIC',
+    sellerRating: 4.5, sellerVerified: true,
+    fakeReviewPercent: 15, botReviewPercent: 7, realReviewPercent: 78,
+    reviewRatingRatio: 3.2,
+    totalReviews: 1820, counterfeitRisk: 'low',
+    ratingDistribution: [
+      { stars: 5, percent: 62, label: '5 star' },
+      { stars: 4, percent: 22, label: '4 star' },
+      { stars: 3, percent: 10, label: '3 star' },
+      { stars: 2, percent: 4,  label: '2 star' },
+      { stars: 1, percent: 2,  label: '1 star' },
+    ],
+    ratingCredibilityScore: 76,
+    ratingHealthyRange: { min: 3.5, max: 4.5 },
+    ratingAboveHealthyRange: false,
+    ratingBelowHealthyRange: false,
+    ratingSuspicionLevel: 'none',
+    bestPrice: { platform: 'Nykaa', price: 720, url: 'https://www.nykaa.com/search/result/?q=lakme+foundation', savings: 30 },
+    savings: 30,
+    alternative: { name: 'Maybelline Fit Me Foundation', price: 425, reason: 'Same coverage, Rs. 325 cheaper', url: 'https://www.nykaa.com/search/result/?q=maybelline+fit+me+foundation', image: null, platform: 'nykaa' },
+    allAlternatives: [
+      {
+        name: 'Maybelline Fit Me Foundation', brand: 'Maybelline', price: 425, platform: 'nykaa',
+        platformUrl: 'https://www.nykaa.com/search/result/?q=maybelline+fit+me+foundation', indianBrand: false,
+        whyAlternative: 'Same coverage, Rs. 325 cheaper with wider shade range',
+        alternativeType: 'budget',
+        priceAnalysis:  { priceScore: 86, savingsAmount: 325, savingsPercent: 43, priceVerdict: 'much cheaper' },
+        ratingAnalysis: { ratingScore: 74, ratingCredible: true, ratingInHealthyRange: true, ratingVerdict: 'good' },
+        reviewAnalysis: { reviewScore: 76, estimatedFakePercent: 16, reviewVerdict: 'moderate' },
+        totalAlternativeScore: 79.3, verifiedAlternative: true, overallVerdict: 'Highly Recommended',
+      },
+      {
+        name: "L'Oreal Infallible Foundation", brand: "L'Oreal", price: 699, platform: 'amazon',
+        platformUrl: 'https://www.amazon.in/s?k=loreal+infallible+foundation', indianBrand: false,
+        whyAlternative: 'Long-lasting, similar finish, Rs. 51 cheaper',
+        alternativeType: 'value',
+        priceAnalysis:  { priceScore: 52, savingsAmount: 51, savingsPercent: 7, priceVerdict: 'cheaper' },
+        ratingAnalysis: { ratingScore: 77, ratingCredible: true, ratingInHealthyRange: true, ratingVerdict: 'good' },
+        reviewAnalysis: { reviewScore: 73, estimatedFakePercent: 18, reviewVerdict: 'moderate' },
+        totalAlternativeScore: 67.9, verifiedAlternative: true, overallVerdict: 'Recommended',
+      },
+    ],
+    totalAlternativesFound: 2,
+    alternativeSummary: '2 foundation alternatives — Maybelline saves Rs. 325',
+    alternatives: [
+      { name: 'Maybelline Fit Me Foundation', brand: 'Maybelline', price: 425, platform: 'nykaa', url: 'https://www.nykaa.com/search/result/?q=maybelline+fit+me+foundation', image: null, reason: 'Same coverage, Rs. 325 cheaper', type: 'budget', savings: 325 },
+      { name: "L'Oreal Infallible Foundation", brand: "L'Oreal", price: 699, platform: 'amazon', url: 'https://www.amazon.in/s?k=loreal+infallible+foundation', image: null, reason: 'Long-lasting, similar finish', type: 'value', savings: 51 },
+    ],
+    analysis: {
+      reviewPattern: 'Mostly authentic, some incentivised reviews',
+      ratingAnalysis: 'Rating 4.2 within healthy cosmetics range (3.5–4.5)',
+      sellerHistory: 'Verified Lakme authorized seller on Nykaa',
+      priceFair: 'Matches MRP — fair market price',
+      authenticity: 'High confidence — Genuine product (low counterfeit risk)',
+    },
+  },
+
+  'nike-shoes': {
+    productName: 'Nike Air Max 270 Running Shoes',
+    productPrice: 4999, platform: 'myntra',
+    trustScore: 85, trustLevel: 'AUTHENTIC',
+    sellerRating: 4.7, sellerVerified: true,
+    fakeReviewPercent: 18, botReviewPercent: 8, realReviewPercent: 74,
+    reviewRatingRatio: 2.6,
+    totalReviews: 3245, counterfeitRisk: 'low',
+    ratingDistribution: [
+      { stars: 5, percent: 65, label: '5 star' },
+      { stars: 4, percent: 22, label: '4 star' },
+      { stars: 3, percent: 8,  label: '3 star' },
+      { stars: 2, percent: 3,  label: '2 star' },
+      { stars: 1, percent: 2,  label: '1 star' },
+    ],
+    ratingCredibilityScore: 80,
+    ratingHealthyRange: { min: 3.6, max: 4.4 },
+    ratingAboveHealthyRange: false,
+    ratingBelowHealthyRange: false,
+    ratingSuspicionLevel: 'none',
+    bestPrice: { platform: 'Nike.com', price: 4795, url: 'https://www.nike.com/in', savings: 204 },
+    savings: 204,
+    alternative: { name: 'Adidas UltraBoost 22', price: 4499, reason: 'Similar performance, Rs. 500 cheaper', url: 'https://www.myntra.com/adidas', image: null, platform: 'myntra' },
+    allAlternatives: [
+      {
+        name: 'Adidas UltraBoost 22', brand: 'Adidas', price: 4499, platform: 'myntra',
+        platformUrl: 'https://www.myntra.com/adidas', indianBrand: false,
+        whyAlternative: 'Similar performance, Rs. 500 cheaper with Boost cushioning',
+        alternativeType: 'value',
+        priceAnalysis:  { priceScore: 72, savingsAmount: 500, savingsPercent: 10, priceVerdict: 'cheaper' },
+        ratingAnalysis: { ratingScore: 78, ratingCredible: true, ratingInHealthyRange: true, ratingVerdict: 'good' },
+        reviewAnalysis: { reviewScore: 75, estimatedFakePercent: 17, reviewVerdict: 'moderate' },
+        totalAlternativeScore: 75.3, verifiedAlternative: true, overallVerdict: 'Recommended',
+      },
+      {
+        name: 'Puma Velocity Nitro', brand: 'Puma', price: 3999, platform: 'flipkart',
+        platformUrl: 'https://www.flipkart.com/search?q=puma+velocity+nitro', indianBrand: false,
+        whyAlternative: 'Good cushioning, Rs. 1000 cheaper, great for daily runs',
+        alternativeType: 'budget',
+        priceAnalysis:  { priceScore: 80, savingsAmount: 1000, savingsPercent: 20, priceVerdict: 'cheaper' },
+        ratingAnalysis: { ratingScore: 72, ratingCredible: true, ratingInHealthyRange: true, ratingVerdict: 'good' },
+        reviewAnalysis: { reviewScore: 74, estimatedFakePercent: 18, reviewVerdict: 'moderate' },
+        totalAlternativeScore: 75.7, verifiedAlternative: true, overallVerdict: 'Recommended',
+      },
+    ],
+    totalAlternativesFound: 2,
+    alternativeSummary: '2 running shoe alternatives — Puma saves Rs. 1,000',
+    alternatives: [
+      { name: 'Adidas UltraBoost 22', brand: 'Adidas', price: 4499, platform: 'myntra', url: 'https://www.myntra.com/adidas', image: null, reason: 'Similar performance, Rs. 500 cheaper', type: 'value', savings: 500 },
+      { name: 'Puma Velocity Nitro', brand: 'Puma', price: 3999, platform: 'flipkart', url: 'https://www.flipkart.com/search?q=puma+velocity+nitro', image: null, reason: 'Good cushioning, Rs. 1000 cheaper', type: 'budget', savings: 1000 },
+    ],
+    analysis: {
+      reviewPattern: 'Healthy — verified purchases dominant',
+      ratingAnalysis: 'Rating 4.3 within healthy clothing/footwear range (3.6–4.4)',
+      sellerHistory: 'Authorized Nike retailer on Myntra',
+      priceFair: 'Standard market pricing for this model',
+      authenticity: 'High confidence — Genuine product (low counterfeit risk)',
+    },
+  },
+}
+
+export function identifyProduct(url) {
+  const u = url.toLowerCase()
+  if (u.includes('iphone'))                                                  return 'iphone'
+  if (u.includes('apple-watch') && (u.includes('import') || u.includes('replica'))) return 'fake-watch'
+  if (u.includes('samsung') && u.includes('tv'))                            return 'samsung-tv'
+  if (u.includes('lakme') || u.includes('foundation'))                      return 'lakme-foundation'
+  if (u.includes('nike') && u.includes('shoes'))                            return 'nike-shoes'
+  return null
+}
+
+export function getDemoResult(url) {
+  const key = identifyProduct(url)
+  if (key) return { ...DEMO_PRODUCTS[key] }
+
+  // Random plausible fallback with all new fields
+  const score    = Math.floor(Math.random() * 31) + 55
+  const price    = Math.floor(Math.random() * 4001) + 999
+  const reviews  = Math.floor(Math.random() * 4501) + 500
+  const savings  = Math.floor(Math.random() * 901) + 100
+  const rating   = parseFloat((Math.random() * 1.0 + 3.8).toFixed(1))
+  const fakeP    = Math.floor(Math.random() * 23) + 8
+  const botP     = Math.floor(Math.random() * 10) + 3
+
+  return {
+    productName:          'Product',
+    productPrice:         price,
+    platform:             'amazon',
+    trustScore:           score,
+    trustLevel:           score >= 90 ? 'HIGHLY AUTHENTIC' : score >= 70 ? 'AUTHENTIC' : score >= 50 ? 'CAUTION' : score >= 30 ? 'SUSPICIOUS' : 'AVOID',
+    sellerRating:         rating,
+    sellerVerified:       score > 65,
+    fakeReviewPercent:    fakeP,
+    botReviewPercent:     botP,
+    realReviewPercent:    Math.max(0, 100 - fakeP - botP),
+    reviewRatingRatio:    parseFloat((Math.random() * 5 + 2).toFixed(1)),
+    totalReviews:         reviews,
+    counterfeitRisk:      score > 70 ? 'low' : 'medium',
+    ratingDistribution: [
+      { stars: 5, percent: 60, label: '5 star' },
+      { stars: 4, percent: 25, label: '4 star' },
+      { stars: 3, percent: 9,  label: '3 star' },
+      { stars: 2, percent: 4,  label: '2 star' },
+      { stars: 1, percent: 2,  label: '1 star' },
+    ],
+    ratingCredibilityScore: Math.floor(Math.random() * 30) + 55,
+    ratingHealthyRange:     { min: 3.5, max: 4.6 },
+    ratingAboveHealthyRange: false,
+    ratingBelowHealthyRange: false,
+    ratingSuspicionLevel:   'none',
+    bestPrice: {
+      platform: 'Flipkart',
+      price:    Math.floor(price * 0.9),
+      url:      'https://www.flipkart.com',
+      savings,
+    },
+    savings,
+    alternative: {
+      name: 'Similar Product', price: Math.floor(price * 0.85),
+      reason: 'Better value option available',
+      url: 'https://www.amazon.in', image: null, platform: 'amazon',
+    },
+    alternatives: [],
+    allAlternatives: [],
+    totalAlternativesFound: 0,
+    alternativeSummary: '',
+    analysis: {
+      reviewPattern:  'Moderate review pattern',
+      ratingAnalysis: 'Rating within expected healthy range',
+      sellerHistory:  'Verified seller',
+      priceFair:      'Within standard market range',
+      authenticity:   score > 70 ? 'Likely genuine product' : 'Caution advised — verify before buying',
+    },
+  }
+}
