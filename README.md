@@ -11,7 +11,8 @@
   <a href="https://scancart-ai.vercel.app">Website</a> ·
   <a href="#run-it-yourself">Run it yourself</a> ·
   <a href="#how-it-works">How it works</a> ·
-  <a href="https://github.com/chhari07/scancart-ai/releases">Releases</a>
+  <a href="https://github.com/chhari07/scancart-ai/releases">Releases</a> ·
+  <a href="https://amankumarchhari.vercel.app/work/scancart">Case study</a>
 </p>
 
 ---
@@ -73,6 +74,10 @@ The build talks to the live backend; set `VITE_BACKEND_URL=http://localhost:4000
 ## Status
 
 ScanCart is free while we test. Scores are a guide, not a guarantee — always read the reasons.
+
+## Built by
+
+[Aman Kumar Chhari](https://amankumarchhari.vercel.app) (SOLOX), solo: extension, Android app, backend and checks. Selected pitch (Top 35), Rajasthan AI Builders Pitch-a-Thon 2026, Jaipur.
 
 ## License
 
