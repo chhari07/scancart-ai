@@ -22,6 +22,9 @@ const BROWSER_HEADERS = {
 const PLATFORM_TRUSTED = [
   'appario', 'cloudtail', 'clicktech', 'cocoblu', 'retailez', 'darshita',   // Amazon India's biggest sellers
   'amazon', 'flipkart', 'retailnet', 'omnitech', 'myntra', 'nykaa', 'snapdeal retail', 'tata cliq', 'ajio',
+  // big Indian retailers selling their own stock on their own sites (the general reader uses the shop as seller)
+  'croma', 'reliance digital', 'reliance retail', 'jiomart', 'vijay sales', 'tatacliq', 'bigbasket', 'decathlon',
+  'ikea', 'lenskart', 'firstcry', 'purplle', 'pepperfry', 'sangeetha', 'poorvika', 'shoppers stop', 'lifestyle',
 ]
 
 // Approximate authorized sellers for major brands
