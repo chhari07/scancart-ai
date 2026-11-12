@@ -46,11 +46,12 @@ export const STORAGE_KEYS = { USER: 'scancart_user', SCANS: 'scancart_scans' }
 
 // ── Website the extension signs in through ─────────────────────────────
 // One setting: change VITE_WEBSITE_URL when the site moves to its own domain.
-export const WEBSITE_URL = import.meta.env.VITE_WEBSITE_URL || 'https://scancartdemo.netlify.app'
+export const WEBSITE_URL = import.meta.env.VITE_WEBSITE_URL || 'https://scancart-ai.vercel.app'
 
 // Pages allowed to hand their signed-in user to the extension
 export const WEBSITE_ORIGINS = [
   new URL(WEBSITE_URL).origin,
+  'https://scancart-ai.vercel.app',
   'https://scancartdemo.netlify.app',
   'https://scancart.ai',
   'http://localhost:5173',

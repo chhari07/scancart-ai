@@ -3,7 +3,7 @@
 // worker (see background/messageHandler.js), because a fetch made from a shopping
 // page carries that page's origin and gets blocked.
 
-export const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000'
+export const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://scancart-api.vercel.app'
 
 // Paths the in-page script may ask the worker to call
 export const ALLOWED_PATHS = ['/api/scan', '/api/price', '/api/watch']

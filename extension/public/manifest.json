@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ScanCart.ai - AI Product Authenticity",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Check a product before you buy: Trust Score, fake-review and fake-sale checks, price history and price-drop alerts.",
   "permissions": [
     "activeTab",
@@ -21,7 +21,9 @@
     "http://localhost:5173/*",
     "http://localhost:4000/*",
     "https://scancart.ai/*",
-    "https://scancartdemo.netlify.app/*"
+    "https://scancartdemo.netlify.app/*",
+    "https://scancart-ai.vercel.app/*",
+    "https://scancart-api.vercel.app/*"
   ],
   "action": {
     "default_popup": "popup.html",
@@ -51,7 +53,8 @@
         "https://*.meesho.com/*",
         "http://localhost:5173/*",
         "https://scancart.ai/*",
-        "https://scancartdemo.netlify.app/*"
+        "https://scancartdemo.netlify.app/*",
+        "https://scancart-ai.vercel.app/*"
       ],
       "js": [
         "src/content/content.js"

@@ -22,7 +22,7 @@ fi
 [ "$1" = "--test" ] && (cd backend && npm test)
 
 # 4. Build the extension
-(cd extension && npm run build >/dev/null) && echo "Extension built: $ROOT/extension/dist"
+(cd extension && VITE_BACKEND_URL=http://localhost:4000 npm run build >/dev/null) && echo "Extension built: $ROOT/extension/dist"
 
 # 5. Stop an old backend on port 4000, then start the new one
 OLD=$(lsof -ti tcp:4000 2>/dev/null || true)

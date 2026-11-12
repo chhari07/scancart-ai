@@ -17,6 +17,7 @@ const PORT = process.env.PORT || 4000
 
 // ── Middleware ─────────────────────────────────────────────────────
 app.use(helmet())
+app.set('trust proxy', 1)
 app.use(morgan('dev'))
 app.use(express.json({ limit: '1mb' }))
 
@@ -27,6 +28,7 @@ const ALLOWED_ORIGINS = [
   /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/,   // Local development
   /^https:\/\/(www\.)?scancart\.ai$/,                // Production website
   /^https:\/\/scancartdemo\.netlify\.app$/,         // Live website (Netlify)
+  /^https:\/\/scancart-ai\.vercel\.app$/,           // Live website (Vercel)
   /^https:\/\/[a-z0-9.-]*\.amazon\.(in|com)/,        // Amazon (content script page origin)
   /^https:\/\/[a-z0-9.-]*\.flipkart\.com/,           // Flipkart
   /^https:\/\/[a-z0-9.-]*\.myntra\.com/,             // Myntra
@@ -92,7 +94,13 @@ async function start() {
   })
 }
 
-start().catch(err => {
-  console.error('Failed to start:', err)
-  process.exit(1)
-})
+// On Vercel the app is imported by api/index.js (no listen); locally we start a server.
+export const ready = process.env.VERCEL ? initFirebase().catch(e => console.error('Firebase init failed:', e)) : null
+if (!process.env.VERCEL) {
+  start().catch(err => {
+    console.error('Failed to start:', err)
+    process.exit(1)
+  })
+}
+
+export default app
