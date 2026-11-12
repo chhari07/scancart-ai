@@ -21,6 +21,9 @@ export function canonicalUrl(url) {
     const host = u.hostname.replace(/^www\./, '')
     const asin = u.pathname.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i)?.[1]
     if (/amazon\./.test(host) && asin) return `${host}/dp/${asin.toUpperCase()}`
+    // A search page is not a product address (the Android bubble sends one for products read in the
+    // Amazon app, which hides the link) → key by store + exact title instead, never one shared "/s" key.
+    if (/^\/(s|search)\/?$/i.test(u.pathname)) return null
     const pid = u.searchParams.get('pid')
     if (/flipkart\.com/.test(host) && pid) return `${host}/p/${pid}`
     return `${host}${u.pathname.replace(/\/+$/, '')}`

@@ -33,3 +33,11 @@ test('critical counterfeit risk from an unverified seller lands in "Do not buy" 
   const s = calculateTrustScore({ review: { fakePercent: 10 }, rating: { ratingCredibilityScore: 80 }, seller: { sellerVerified: false, counterfeitRisk: 'critical', sellerTrustScore: 60 }, price: { priceScore: 80 }, quality: { qualityScore: 80 }, compliance: { complianceScore: 90 } })
   assert.ok(s < 45, String(s))
 })
+
+import { productKeyFor } from '../services/priceStore.js'
+test('products read from the Amazon app (search-page stand-in link) get their own price-history key', () => {
+  const a = productKeyFor({ url: 'https://www.amazon.in/s?k=Crucial%20P310%201TB', platform: 'amazon', productName: 'Crucial P310 1TB' })
+  const b = productKeyFor({ url: 'https://www.amazon.in/s?k=Samsung%20990%20Pro', platform: 'amazon', productName: 'Samsung 990 Pro' })
+  assert.notEqual(a, b)
+  assert.equal(a, productKeyFor({ url: 'https://www.amazon.in/s?k=other', platform: 'amazon', productName: 'Crucial P310 1TB' }))
+})
