@@ -26,6 +26,9 @@
 - Background: checks watches every 6 hours by fetching each product page. It shows a Chrome notification when the price drops or reaches the target. Clicking the notification opens the product.
 
 ## Run it
+**One command:** `cd ~/Desktop/projects/scancart.ai--main && ./start-local.sh` (it creates `.env` if missing, installs packages the first time, builds the extension and starts the backend). Add `--test` to run the tests first.
+
+Or step by step:
 1. Backend:
    - `cd backend && cp .env.example .env` and add `ANTHROPIC_API_KEY` (without it, checks run on backup rules only)
    - `npm install` (first time only), then `npm start` (port 4000)
