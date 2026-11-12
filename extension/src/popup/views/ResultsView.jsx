@@ -9,6 +9,7 @@ import {
 import { getTrustLevel, PLATFORM_NAMES } from '../../utils/constants'
 import { fetchAlternatives } from '../../services/aiAnalysis'
 import { rupees } from './ProductRow'
+import { PriceGraph, DiscountCard, WatchBox } from './PriceBits'
 
 const TABS = [['overview', 'Overview'], ['reviews', 'Reviews'], ['seller', 'Seller'], ['price', 'Price'], ['alts', 'Alts']]
 const plat = p => PLATFORM_NAMES[p] || PLATFORM_NAMES[String(p || '').toLowerCase()] || (p ? String(p).charAt(0).toUpperCase() + String(p).slice(1) : 'store')
@@ -235,6 +236,13 @@ function Reviews({ r }) {
         </Section>
       )}
 
+      {r.reviewSpike?.checked && (
+        <div className="sc-note" style={{ background: r.reviewSpike.spike ? '#FEF2F2' : '#F0FDF4', borderColor: 'transparent' }}>
+          {r.reviewSpike.spike ? <AlertTriangle size={16} color="#DC2626" style={{ flexShrink: 0, marginTop: 1 }} /> : <Check size={16} color="#16A34A" style={{ flexShrink: 0, marginTop: 1 }} />}
+          <div><b style={{ color: r.reviewSpike.spike ? '#DC2626' : '#16A34A' }}>{r.reviewSpike.spike ? 'Review burst found' : 'No review burst'}</b><div style={{ marginTop: 3 }}>{r.reviewSpike.note}</div></div>
+        </div>
+      )}
+
       {found.length > 0 && (
         <div className="sc-note blue">
           <MessageSquare size={16} color="#2563EB" style={{ flexShrink: 0, marginTop: 1 }} />
@@ -332,8 +340,16 @@ function Price({ r }) {
     : null
   const priceSum = summary(r, 'price')
 
+  const ph = r.priceHistory
+  const pd = r.scanInput?.productData
+  const watchProduct = { url: r.scanInput?.url || r.url, productName: r.productName, platform: r.platform, price: cur, image: pd?.image }
+
   return (
     <>
+      <DiscountCard discount={ph?.discount} />
+      {ph && <PriceGraph points={ph.points} current={cur} />}
+      <WatchBox product={watchProduct} />
+
       {save ? (
         <div className="sc-save-card">
           <div style={{ fontSize: 12, opacity: .85 }}>You can save</div>
@@ -364,7 +380,7 @@ function Price({ r }) {
         </Section>
       )}
 
-      {r.mrp > cur && cur > 0 && (
+      {!ph && r.mrp > cur && cur > 0 && (
         <Section title="Is the discount real?">
           <div className="sc-small" style={{ lineHeight: 1.5 }}>
             Page says <b>{Math.round((r.mrp - cur) / r.mrp * 100)}% off</b> (MRP {rupees(r.mrp)}).

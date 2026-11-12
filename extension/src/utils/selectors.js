@@ -55,6 +55,7 @@ export const SELECTORS = {
     seller:          '#sellerProfileTriggerId, #merchant-info a',
     sellerLink:      '#sellerProfileTriggerId, #merchant-info a',   // href → seller profile URL
     reviewTexts:     '[data-hook="review-body"] span.a-size-base, span.review-text-content span, [data-hook="review-body"] > span',
+    reviewDates:     '[data-hook="review-date"]',
     // Best-effort strikethrough/MRP element — mirror of the price parser's exclusion list,
     // this time targeting those elements directly to capture the claimed "was" price.
     mrp:             '.a-price.a-text-price .a-offscreen, #corePriceDisplay_desktop_feature_div .basisPrice .a-offscreen',
@@ -69,6 +70,7 @@ export const SELECTORS = {
     seller:          '#sellerName span span, .WS7GLi',
     sellerLink:      '#sellerName a, .WS7GLi a',
     reviewTexts:     '._6K-7Co, .t-ZTKy, ._2-N8zT',
+    reviewDates:     '._2sc7ZR',
     mrp:             '._3I9_wc, .yRaY8j',
   },
   myntra: {

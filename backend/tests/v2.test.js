@@ -57,6 +57,8 @@ test('review dates: parses store formats', () => {
   assert.equal(parseReviewDate('November 3, 2026', now), Date.UTC(2026, 10, 3))
   assert.equal(parseReviewDate('2 days ago', now), now - 2 * DAY)
   assert.equal(parseReviewDate('no date here', now), null)
+  assert.equal(parseReviewDate('3 months ago', now), null, 'too rough to place in a 3-day window')
+  assert.equal(parseReviewDate('Nov, 2025', now), null)
 })
 
 test('review burst: 6 of 8 reviews in 2 days → spike', () => {

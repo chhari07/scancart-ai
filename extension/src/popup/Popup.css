@@ -242,3 +242,9 @@ button { font-family: inherit; }
 /* ── Not a product ─────────────────────────────────────── */
 .sc-empty-art { width: 120px; height: 120px; margin: 10px auto 4px; border-radius: 50%; background: radial-gradient(circle, #DBEAFE 0%, #EFF6FF 60%, rgba(239,246,255,0) 72%); display: grid; place-items: center; position: relative; }
 .sc-store-pills { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+
+/* v1.1 — price watch + small icon buttons */
+.sc-input { flex: 1; min-width: 0; height: 36px; border: 1px solid #CBD5E1; border-radius: 10px; padding: 0 10px; font: inherit; font-size: 13px; color: #0F172A; background: #fff; }
+.sc-input:focus { outline: 2px solid #BFDBFE; border-color: #2563EB; }
+.sc-icon-btn { width: 30px; height: 30px; border-radius: 999px; border: 1px solid #E2E8F0; background: #fff; color: #334155; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; }
+.sc-icon-btn:hover { background: #F1F5F9; color: #2563EB; }

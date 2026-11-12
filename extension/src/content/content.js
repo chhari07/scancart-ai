@@ -6,7 +6,11 @@ import {
   injectScanButton,
   removeScanButton,
   setFabResult,
+  setFabChecking,
+  setFabQuick,
+  setPriceInfo,
 } from "./injectButton";
+import { callBackend } from "../services/backendClient";
 
 /* ---------------- AUTH BRIDGE ---------------- */
 
@@ -89,6 +93,42 @@ function initScanner() {
 
   // Pass extracted product data so the overlay can show it immediately
   injectScanButton(scanner.getData());
+  pageLoadChecks(scanner);
+}
+
+/* ---------------- ON PAGE LOAD: save price + quick badge ---------------- */
+// 1) Saves today's price to ScanCart's price history (that is how the graph and the
+//    "is the discount real?" check learn over time).
+// 2) Asks for a quick Trust Score from page data (rules only, no AI) for the button.
+let checkedFor = null;
+async function pageLoadChecks(scanner, attempt = 0) {
+  let data = scanner.getData();
+  // Some stores render the price late — read the page again a few times
+  if (!data?.price && attempt < 3) {
+    setTimeout(() => { scanner.scan(); pageLoadChecks(scanner, attempt + 1); }, 1500);
+    return;
+  }
+  if (!data?.price) return;
+  const url = location.href;
+  if (checkedFor === url) return;
+  checkedFor = url;
+  const settings = (await chrome.storage.local.get("scancart_settings")).scancart_settings || {};
+  const productData = { ...data };
+
+  callBackend("/api/price/observe", {
+    url,
+    productData: { productName: data.productName, price: data.price, mrpPrice: data.mrpPrice || undefined, platform: data.platform },
+  }, 8000).then((r) => setPriceInfo(r)).catch(() => {});
+
+  if (settings.autoBadge === false) return;
+  setFabChecking();
+  try {
+    const r = await callBackend("/api/scan/quick", { url, productData }, 8000);
+    setFabQuick(r?.result);
+    if (typeof r?.result?.trustScore === "number") chrome.runtime.sendMessage({ type: "SCANCART_QUICK_SCORE", score: r.result.trustScore });
+  } catch {
+    setFabQuick(null);   // backend not reachable / not enough data → plain "Scan with ScanCart"
+  }
 }
 
 /* ---------------- PAGE LOAD ---------------- */
@@ -108,6 +148,7 @@ const observer = new MutationObserver(() => {
     previousUrl = location.href;
 
     removeScanButton();
+    checkedFor = null;
 
     setTimeout(() => {
       initScanner();

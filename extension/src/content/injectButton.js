@@ -2,11 +2,14 @@
 // Shadow DOM isolation — all styles scoped inside shadow root.
 // Electric Blue (#2563EB) button, dark panel.
 import { analyzeProduct, fetchAlternatives } from '../services/aiAnalysis'
+import { addWatch, findWatch, removeWatch } from '../services/priceWatch'
 
 const HOST_ID = 'scancart-host'
 
 let _productData = null
 let _shadowRoot  = null
+let _priceInfo   = null   // { points, summary, discount } from /api/price/observe on page load
+let _quick       = null   // quick badge result
 
 // Extension files (logo, font) as URLs the page can load
 function _asset(path) {
@@ -73,12 +76,37 @@ export function injectScanButton(productData = null) {
   _shadowRoot.getElementById('sc-close').addEventListener('click', _hidePanel)
   _shadowRoot.getElementById('sc-backdrop').addEventListener('click', _hidePanel)
   _setupOptions()
-  setTimeout(_showPanel, 2200)
+  // No auto-open: the button itself now shows a quick Trust Score (see setFabQuick).
 }
 
 export function removeScanButton() {
   document.getElementById(HOST_ID)?.remove()
   _shadowRoot = null
+}
+
+const _fabTone = (score) => score >= 70 ? ['fab-green', 'Safe to buy'] : score >= 45 ? ['fab-yellow', 'Buy with caution'] : ['fab-red', 'Do not buy']
+
+export function setFabChecking() {
+  const label = _shadowRoot?.getElementById('sc-fab-label')
+  if (label) label.textContent = 'ScanCart · checking…'
+}
+
+/** Quick check on page load (backup rules only). Tapping the button runs the full AI scan. */
+export function setFabQuick(q) {
+  _quick = q
+  const fab = _shadowRoot?.getElementById('sc-fab')
+  const label = _shadowRoot?.getElementById('sc-fab-label')
+  if (!fab || !label) return
+  if (!q || typeof q.trustScore !== 'number') { label.textContent = 'Scan with ScanCart'; return }
+  fab.classList.remove('fab-green', 'fab-yellow', 'fab-red')
+  const [cls, words] = _fabTone(q.trustScore)
+  fab.classList.add(cls)
+  label.innerHTML = `<span class="fab-quick">QUICK</span> ${q.trustScore} · ${q.discount?.status === 'fake_sale' ? 'Sale looks fake' : words}`
+  fab.title = 'Quick check from page data (no AI yet). Open to run the full scan.'
+}
+
+export function setPriceInfo(info) {
+  _priceInfo = info
 }
 
 export function setFabResult(score) {
@@ -114,6 +142,7 @@ const _CSS = `
 .fab-ic { width: 34px; height: 34px; border-radius: 50%; background: rgba(255,255,255,.18); display: flex; align-items: center; justify-content: center; }
 #sc-fab.fab-green  { background: linear-gradient(90deg, #15803D, #16A34A); box-shadow: 0 10px 28px rgba(22,163,74,.35); }
 #sc-fab.fab-yellow { background: linear-gradient(90deg, #D97706, #F59E0B); box-shadow: 0 10px 28px rgba(245,158,11,.35); }
+#sc-fab .fab-quick { font-size: 9.5px; font-weight: 800; letter-spacing: .1em; background: rgba(255,255,255,.22); border-radius: 999px; padding: 2px 6px; margin-right: 2px; vertical-align: 1px; }
 #sc-fab.fab-red    { background: linear-gradient(90deg, #B91C1C, #DC2626); box-shadow: 0 10px 28px rgba(220,38,38,.35); }
 
 /* ── Backdrop ── */
@@ -236,6 +265,16 @@ const _CSS = `
 
 .sc-err { text-align: center; padding: 28px; }
 .sc-err-msg { font-size: 13px; color: #64748B; margin: 12px 0; }
+.sc-graph { background: #fff; border: 1px solid #E2E8F0; border-radius: 16px; padding: 12px 12px 8px; }
+.sc-graph-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.sc-graph-k { font-size: 10.5px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: .1em; }
+.sc-graph-legend { display: flex; justify-content: space-between; font-size: 10.5px; color: #64748B; margin-top: 4px; }
+.sc-watch { background: #fff; border: 1px solid #E2E8F0; border-radius: 16px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.sc-watch-row { display: flex; gap: 8px; align-items: center; }
+.sc-watch input { flex: 1; min-width: 0; height: 38px; border: 1px solid #CBD5E1; border-radius: 10px; padding: 0 10px; font: inherit; font-size: 13px; color: #0F172A; }
+.sc-watch-btn { height: 38px; border: 0; border-radius: 999px; background: #0F172A; color: #fff; font: inherit; font-size: 12.5px; font-weight: 700; padding: 0 16px; cursor: pointer; white-space: nowrap; }
+.sc-watch-btn.ghost { background: #fff; color: #0F172A; border: 1px solid #E2E8F0; }
+.sc-watch-note { font-size: 11px; color: #64748B; line-height: 1.45; }
 .sc-section-lbl { font-size: 10.5px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: .12em; }
 `
 
@@ -388,6 +427,7 @@ async function _handleOption(option) {
       _setupOptions()
     })
     if (option === 'alternatives') _setupAltCards()
+    if (option === 'price') _setupWatch()
     // Wire up data-href clicks (price best-found card, etc.) via event delegation
     cnt.querySelectorAll('[data-href]').forEach(el => {
       el.addEventListener('click', () => {
@@ -458,7 +498,7 @@ function _reviewResult(r) {
   const c     = fake<20?'#16A34A':fake<50?'#CA8A04':'#DC2626'
   const risk  = fake<20?'LOW RISK':fake<50?'MEDIUM':'HIGH RISK'
   const insight = fake<20
-    ? `Our AI scanned all ${total.toLocaleString('en-IN')} ratings. Only ${fake}% appear suspicious — the star rating is reliable.`
+    ? `From the rating counts and the review texts on this page, about ${fake}% of ${total.toLocaleString('en-IN')} ratings look suspicious. The star rating looks reliable.`
     : fake<50
     ? `${fake}% of ${total.toLocaleString('en-IN')} reviews look manipulated. Filter by "Verified Purchase" before deciding.`
     : `ALERT: ${fake}% of reviews are likely fake. The star rating is heavily inflated — do not trust it.`
@@ -467,7 +507,8 @@ function _reviewResult(r) {
     ${_trustBar(r.trustScore)}
     ${_stats([total.toLocaleString('en-IN'),'Total',null],[`${fake}%`,'Suspicious',c],[`${100-fake}%`,'Genuine','#16A34A'])}
     ${_aiBox(insight)}
-    ${_verdict(fake<20?'Reviews authentic — rating trustworthy':fake<50?'Partially inflated — read carefully':'Reviews unreliable — do not trust rating',fake<20?'green':fake<50?'yellow':'red')}
+    ${r.reviewSpike?.checked ? _verdict(r.reviewSpike.note, r.reviewSpike.spike ? 'red' : 'green') : ''}
+    ${r.reviewSpike?.spike && fake<20 ? _verdict('Review burst found — read the newest reviews carefully','yellow') : _verdict(fake<20?'Reviews look genuine — rating looks trustworthy':fake<50?'Partially inflated — read carefully':'Reviews unreliable — do not trust rating',fake<20?'green':fake<50?'yellow':'red')}
   `
 }
 
@@ -488,11 +529,15 @@ function _priceResult(r) {
     ? `Same product available on ${plat} for Rs. ${best.toLocaleString('en-IN')}, saving you Rs. ${save.toLocaleString('en-IN')}.`
     : `No lower price found in ScanCart's search — Rs. ${cur.toLocaleString('en-IN')} looks like a fair price.`
 
-  const bestLabel = hasCheaper ? `Rs. ${best.toLocaleString('en-IN')}` : 'Best Price'
-  const bestSub   = hasCheaper ? `${plat}${platUrl ? ' ↗' : ''}` : 'Already lowest'
+  const bestLabel = hasCheaper ? `Rs. ${best.toLocaleString('en-IN')}` : 'None cheaper'
+  const bestSub   = hasCheaper ? `${plat}${platUrl ? ' ↗' : ''}` : 'in ScanCart\'s search'
 
+  const hist = r.priceHistory || _priceInfo
   return `
-    ${_rHead(P.rupee,'#16A34A','rgba(22,163,74,0.1)','Price check','This price vs similar products',hasCheaper?`SAVE Rs.${save.toLocaleString('en-IN')}`:'BEST PRICE','#16A34A')}
+    ${_discountHTML(hist?.discount)}
+    ${_graphHTML(hist?.points, cur)}
+    ${_watchHTML()}
+    ${_rHead(P.rupee,'#16A34A','rgba(22,163,74,0.1)','Price check','This price vs similar products',hasCheaper?`SAVE Rs.${save.toLocaleString('en-IN')}`:'NO CHEAPER STORE','#16A34A')}
     <div class="sc-price-vs">
       <div class="sc-pv-side">
         <div class="sc-pv-label">Current</div>
@@ -511,7 +556,7 @@ function _priceResult(r) {
     ${_verdict(
       hasCheaper
         ? `Better price on ${plat} — save Rs. ${save.toLocaleString('en-IN')}`
-        : 'This is the best price available now',
+        : 'No cheaper store found right now',
       hasCheaper ? 'yellow' : 'green'
     )}
   `
@@ -731,3 +776,88 @@ function _summaryResult(r) {
 function _showPanel()   { _shadowRoot?.getElementById('sc-panel')?.classList.add('open'); _shadowRoot?.getElementById('sc-backdrop')?.classList.add('on') }
 function _hidePanel()   { _shadowRoot?.getElementById('sc-panel')?.classList.remove('open'); _shadowRoot?.getElementById('sc-backdrop')?.classList.remove('on') }
 function _togglePanel() { _shadowRoot?.getElementById('sc-panel')?.classList.contains('open') ? _hidePanel() : _showPanel() }
+
+
+/* ═══════════════════════════════════════════════
+   PRICE HISTORY · DISCOUNT CHECK · WATCH (v1.1)
+═══════════════════════════════════════════════ */
+const _rs = (n) => 'Rs. ' + Math.round(n).toLocaleString('en-IN')
+
+function _discountHTML(d) {
+  if (!d) return ''
+  const map = {
+    fake_sale:          ['red',    'Sale looks fake'],
+    new_low:            ['green',  'Real deal: lowest price seen'],
+    usual:              ['yellow', 'Usual price'],
+    above_usual:        ['yellow', 'Higher than usual'],
+    not_enough_history: ['yellow', 'Price history is just starting'],
+  }
+  const [lvl, head] = map[d.status] || ['yellow', 'Price check']
+  return _verdict(`<b>${head}.</b> <span style="font-weight:500">${d.message}</span>`, lvl)
+}
+
+// Plain SVG line of every price ScanCart has seen for this listing (no smoothing, no guesses)
+function _graphHTML(points, current) {
+  const pts = (points || []).filter(p => p.price > 0)
+  if (pts.length < 2) {
+    return `<div class="sc-graph"><div class="sc-graph-k">Price history</div><p class="sc-watch-note" style="margin-top:6px">${pts.length ? 'First price saved today.' : 'No prices saved yet.'} ScanCart saves the price each time this page is opened, so the graph fills in over the coming days.</p></div>`
+  }
+  const W = 330, H = 90, pad = 6
+  const t0 = pts[0].t, t1 = pts[pts.length - 1].t || t0 + 1
+  const lo = Math.min(...pts.map(p => p.price)), hi = Math.max(...pts.map(p => p.price))
+  const x = (t) => pad + (W - 2 * pad) * ((t - t0) / Math.max(1, t1 - t0))
+  const y = (v) => hi === lo ? H / 2 : pad + (H - 2 * pad) * (1 - (v - lo) / (hi - lo))
+  let d = ''
+  pts.forEach((p, i) => { d += i ? ` H${x(p.t).toFixed(1)} V${y(p.price).toFixed(1)}` : `M${x(p.t).toFixed(1)} ${y(p.price).toFixed(1)}` })  // step line: price holds until it changes
+  const last = pts[pts.length - 1]
+  const day = (t) => new Date(t).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+  return `<div class="sc-graph">
+    <div class="sc-graph-top"><span class="sc-graph-k">Price history · ${pts.length} prices</span><span style="font-size:12px;font-weight:800">${_rs(current || last.price)}</span></div>
+    <svg width="100%" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="display:block">
+      <line x1="0" x2="${W}" y1="${y(lo)}" y2="${y(lo)}" stroke="#BBF7D0" stroke-dasharray="3 3"/>
+      <path d="${d} H${W - pad}" fill="none" stroke="#2563EB" stroke-width="2.2" stroke-linejoin="round"/>
+      <circle cx="${x(last.t)}" cy="${y(last.price)}" r="3.5" fill="#2563EB"/>
+    </svg>
+    <div class="sc-graph-legend"><span>${day(t0)}</span><span>Low ${_rs(lo)} · High ${_rs(hi)}</span><span>${day(t1)}</span></div>
+  </div>`
+}
+
+function _watchHTML() {
+  const cur = _productData?.price || 0
+  if (!cur) return ''
+  const suggest = Math.round(cur * 0.9)
+  return `<div class="sc-watch" id="sc-watch">
+    <div class="sc-graph-k">Watch this price</div>
+    <div class="sc-watch-row" id="sc-watch-form">
+      <input id="sc-watch-target" type="number" min="1" inputmode="numeric" placeholder="Alert me at (optional)" value="${suggest}">
+      <button class="sc-watch-btn" id="sc-watch-add">Watch</button>
+    </div>
+    <p class="sc-watch-note" id="sc-watch-note">ScanCart checks this page every 6 hours and sends a Chrome notification when the price drops or reaches your target.</p>
+  </div>`
+}
+
+async function _setupWatch() {
+  const box = _shadowRoot?.getElementById('sc-watch')
+  if (!box) return
+  const url = window.location.href
+  const show = (w) => {
+    const form = _shadowRoot.getElementById('sc-watch-form'), note = _shadowRoot.getElementById('sc-watch-note')
+    if (!w) return
+    form.innerHTML = `<button class="sc-watch-btn ghost" id="sc-watch-stop">Stop watching</button>`
+    note.textContent = `Watching${w.targetPrice ? ` · alert at ${_rs(w.targetPrice)}` : ' · alert on any drop'}. Started at ${_rs(w.startPrice)}.`
+    _shadowRoot.getElementById('sc-watch-stop').addEventListener('click', async (e) => {
+      e.stopPropagation(); await removeWatch(w.id)
+      box.outerHTML = _watchHTML(); _setupWatch()
+    })
+  }
+  const existing = await findWatch(url).catch(() => null)
+  if (existing) return show(existing)
+  _shadowRoot.getElementById('sc-watch-add')?.addEventListener('click', async (e) => {
+    e.stopPropagation()
+    const target = Number(_shadowRoot.getElementById('sc-watch-target')?.value) || 0
+    const btn = e.currentTarget; btn.disabled = true; btn.textContent = 'Saving…'
+    try {
+      show(await addWatch({ url, productName: _productData?.productName, platform: _productData?.platform, price: _productData?.price, image: _productData?.image }, target))
+    } catch { btn.disabled = false; btn.textContent = 'Try again' }
+  })
+}

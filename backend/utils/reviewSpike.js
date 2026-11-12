@@ -11,8 +11,11 @@ export function parseReviewDate(s, now = Date.now()) {
   if (typeof s === 'number') return Number.isFinite(s) ? s : null
   const t = String(s).trim().toLowerCase()
   if (!t) return null
-  let m = t.match(/(\d+)\s+(day|week|month|year)s?\s+ago/)
-  if (m) return now - Number(m[1]) * { day: 1, week: 7, month: 30, year: 365 }[m[2]] * DAY
+  // "3 months ago" / "2 weeks ago" are too rough for a 3-day window (they would all land
+  // on the same made-up day and look like a burst), so only day-level dates are used.
+  if (/(week|month|year)s?\s+ago/.test(t)) return null
+  let m = t.match(/(\d+)\s+days?\s+ago/)
+  if (m) return now - Number(m[1]) * DAY
   if (/\btoday\b/.test(t)) return now
   if (/\byesterday\b/.test(t)) return now - DAY
   m = t.match(/(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]{3,9}),?\s+(\d{4})/)              // 3 November 2026

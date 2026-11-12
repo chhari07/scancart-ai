@@ -3,6 +3,7 @@
 // Every method uses try-catch — never throws, never crashes.
 
 import { detectPlatform, isProductPage, SELECTORS } from '../utils/selectors'
+import { readPageJsonLd } from '../utils/jsonld'
 
 export class ProductScanner {
   constructor() {
@@ -37,15 +38,24 @@ export class ProductScanner {
       const sel = SELECTORS[this.platform]
       if (!sel) return null
 
-      const name        = this.text(sel.name)
-      const price       = this.parsePrice(sel.price)
-      const image       = this.attr(sel.image, 'src')
-      const rating      = this.parseRating(sel.rating)
-      const numRatings  = this.parseCount(sel.numRatings)
-      const numReviews  = this.parseCount(sel.numReviews)
+      // schema.org JSON-LD first where it is reliable; CSS selectors fill the gaps.
+      // Amazon rarely publishes an offer price in JSON-LD, and its price block is well tuned,
+      // so there the page's own price element wins.
+      const ld          = readPageJsonLd()
+      const domPrice    = this.parsePrice(sel.price)
+      const name        = this.text(sel.name) || ld?.name || ''
+      const price       = this.platform === 'amazon' ? (domPrice || ld?.price || 0) : (ld?.price || domPrice)
+      const image       = this.attr(sel.image, 'src') || ld?.image || ''
+      const rating      = this.parseRating(sel.rating) || ld?.rating || 0
+      const numRatings  = this.parseCount(sel.numRatings) || ld?.numRatings || 0
+      const numReviews  = this.parseCount(sel.numReviews) || ld?.numReviews || 0
       const seller            = this.parseSeller(sel.seller)
       const sellerProfilePath = this.attr(sel.sellerLink, 'href')
-      const reviewTexts       = this.extractReviews(sel.reviewTexts)
+      const domReviews        = this.extractReviews(sel.reviewTexts)
+      const reviewTexts       = domReviews.length ? domReviews : (ld?.reviewTexts || [])
+      // Keep repeats: several reviews on the same day is exactly what the burst check looks for
+      const domDates          = this.extractDates(sel.reviewDates)
+      const reviewDates       = (domDates.length ? domDates : (ld?.reviewDates || [])).slice(0, 40)
       const mrpPrice          = this.parseMrp(sel.mrp)
       const pageSignals       = this.scanPageSignals()
 
@@ -63,7 +73,10 @@ export class ProductScanner {
         seller,
         sellerProfilePath,
         reviewTexts,
+        reviewDates,
         mrpPrice,
+        brand:        ld?.brand || '',
+        sources:      { jsonLd: Boolean(ld), jsonLdPrice: Boolean(ld?.price) },
         pageSignals,
         platform:     this.platform,
         url:          window.location.href,
@@ -241,6 +254,14 @@ export class ProductScanner {
       })
       // Return at most 8 reviews to keep the payload small
       return texts.slice(0, 8)
+    } catch { return [] }
+  }
+
+  // Review dates shown on the page ("Reviewed in India on 3 November 2026")
+  extractDates(selector) {
+    if (!selector) return []
+    try {
+      return [...document.querySelectorAll(selector)].map(n => n.textContent?.trim()).filter(t => t && t.length < 120).slice(0, 40)
     } catch { return [] }
   }
 

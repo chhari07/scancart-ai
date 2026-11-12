@@ -8,12 +8,15 @@ import { ReadyView      } from './views/ReadyView'
 import { NotProductView } from './views/NotProductView'
 import { ScanningView   } from './views/ScanningView'
 import { ResultsView    } from './views/ResultsView'
+import { WatchesView    } from './views/WatchesView'
+import { Bell } from 'lucide-react'
 import { PLATFORM_NAMES, WEBSITE_URL } from '../utils/constants'
 import logoUrl from '/scancart-logo.png'
 import './Popup.css'
 
 export default function Popup() {
-  const [appState, setAppState] = useState('loading')   // loading | login | ready | scanning | results
+  const [appState, setAppState] = useState('loading')   // loading | login | ready | scanning | results | watches
+  const [prevState, setPrevState] = useState('ready')
   const [platform, setPlatform] = useState(null)
   const [product, setProduct]   = useState(null)        // what the content script read from the page
   const { scanning, results, stageIndex, error, scan, reset } = useScan()
@@ -53,9 +56,14 @@ export default function Popup() {
           <div className="sc-logo">
             <img src={logoUrl} alt="ScanCart.ai" />
           </div>
-          {platformName && appState !== 'login' && (
-            <span className="sc-pill blue">{platformName}</span>
-          )}
+          <div className="sc-row" style={{ gap: 6 }}>
+            {platformName && appState !== 'login' && (
+              <span className="sc-pill blue">{platformName}</span>
+            )}
+            {appState !== 'watches' && appState !== 'scanning' && (
+              <button className="sc-icon-btn" title="Price watches" aria-label="Price watches" onClick={() => { setPrevState(appState); setAppState('watches') }}><Bell size={15} /></button>
+            )}
+          </div>
         </div>
       )}
 
@@ -77,6 +85,10 @@ export default function Popup() {
 
       {appState === 'scanning' && (
         <div className="sc-body"><ScanningView stageIndex={stageIndex} product={product} platform={platform} /></div>
+      )}
+
+      {appState === 'watches' && (
+        <div className="sc-body"><WatchesView onBack={() => setAppState(prevState === 'results' && !results ? 'ready' : prevState)} /></div>
       )}
 
       {appState === 'results' && results && (

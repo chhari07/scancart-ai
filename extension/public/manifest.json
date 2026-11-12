@@ -1,13 +1,15 @@
 {
   "manifest_version": 3,
   "name": "ScanCart.ai - AI Product Authenticity",
-  "version": "1.0.0",
-  "description": "Know if a product is REAL in 6 seconds. Fake detection for Amazon, Flipkart, Myntra, Nykaa & Meesho.",
+  "version": "1.1.0",
+  "description": "Check a product before you buy: Trust Score, fake-review and fake-sale checks, price history and price-drop alerts.",
   "permissions": [
     "activeTab",
     "storage",
     "tabs",
-    "scripting"
+    "scripting",
+    "alarms",
+    "notifications"
   ],
   "host_permissions": [
     "https://*.amazon.in/*",
