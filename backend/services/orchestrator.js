@@ -6,6 +6,7 @@
 // It now runs on demand via runAlternatives() → POST /api/scan/alternatives.
 import { reviewEngineAgent    } from '../agents/reviewEngineAgent.js'
 import { classifyReviews      } from '../utils/reviewClassifier.js'
+import { detectCategory, tagAspects } from '../utils/reviewAspects.js'
 import { ratingEngineAgent    } from '../agents/ratingEngineAgent.js'
 import { sellerShieldAgent    } from '../agents/sellerShieldAgent.js'
 import { pricePiggyAgent      } from '../agents/pricePiggyAgent.js'
@@ -119,6 +120,15 @@ export async function runAgenticScan({ url, productData, userId }) {
   const checksCompleted = engines.filter(e => !e.unavailable).length
   const checksFromBackupRules = engines.filter(e => !e.unavailable && e.source !== 'claude').length
 
+  // Reviews sorted once: real / fake / can't judge (with reasons), then by topic
+  const reviewSamples = classifyReviews(productData?.reviewTexts)
+  const labelledReviews = [
+    ...reviewSamples.real.map(r => ({ ...r, label: 'real' })),
+    ...reviewSamples.fake.map(r => ({ ...r, label: 'fake' })),
+    ...reviewSamples.unclear.map(r => ({ ...r, label: 'unclear' })),
+  ]
+  const category = detectCategory(productData?.productName || productData?.name || '', productData?.breadcrumb || '')
+
   const result = {
     // ── Core ──
     productName:  productData?.productName || productData?.name || extractNameFromUrl(url),
@@ -139,7 +149,12 @@ export async function runAgenticScan({ url, productData, userId }) {
     reviewTextsAnalysed:         review.reviewTextsAnalysed  || 0,
     similarProductsCompared:     review.similarProductsCompared || 0,
     // Each review shown on the page, sorted into looks real / looks fake / too short to judge
-    reviewSamples:               classifyReviews(productData?.reviewTexts),
+    reviewSamples,
+    // "What buyers say": topics (material, fit, battery…) for this category, real-looking reviews only
+    productCategory:             category,
+    reviewAspects:               category || reviewSamples.checked ? tagAspects(labelledReviews, category) : null,
+    verifiedReviewCount:         Number.isFinite(productData?.verifiedCount) ? productData.verifiedCount : null,
+    verifiedReviewOf:            Number.isFinite(productData?.verifiedOf) ? productData.verifiedOf : null,
 
     // ── Engine 1B — Rating ──
     ratingDistribution:      rating.estimatedDistribution,

@@ -15,6 +15,7 @@ let _full        = null   // full scan score (number) once the user ran a check
 let _aiOn        = true   // false when the backend ran basic rules only (no AI)
 let _tabId       = null
 let _pageUrl     = null   // set when the panel runs inside the toolbar popup (not on the page)
+let _lastReview  = null   // last scan result shown in the Reviews view (for the aspect detail screen)
 const _url = () => _pageUrl || window.location.href
 
 // What the page knows right now — the toolbar popup reads this (one source of truth)
@@ -361,6 +362,35 @@ const _CSS = `
 .sc-rv.fake .sc-rv-txt { color: #64748B; }
 .sc-rv-why { font-size: 10.5px; font-weight: 700; margin-top: 4px; }
 .sc-rv.real .sc-rv-why { color: #15803D; } .sc-rv.fake .sc-rv-why { color: #DC2626; } .sc-rv.unclear .sc-rv-why { color: #94A3B8; }
+/* ── Reviews: counts + "What buyers say" (v1.3) ── */
+.sc-rc { background: #fff; border: 1px solid #E2E8F0; border-radius: 16px; padding: 11px 12px; }
+.sc-rc-k { font-size: 10.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #64748B; }
+.sc-rc-big { display: flex; align-items: baseline; gap: 8px; margin: 3px 0 7px; }
+.sc-rc-big b { font-size: 28px; font-weight: 900; letter-spacing: -.02em; color: #0F172A; }
+.sc-rc-big span { font-size: 12px; color: #64748B; font-weight: 600; }
+.sc-rc-split { display: flex; height: 9px; border-radius: 999px; overflow: hidden; background: #F1F5F9; }
+.sc-rc-leg { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 7px; font-size: 11.5px; font-weight: 700; color: #0F172A; }
+.sc-rc-leg i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+.sc-rc-sub { font-size: 11px; color: #64748B; margin-top: 5px; line-height: 1.4; }
+.sc-rwarn { font-size: 12px; font-weight: 700; border-radius: 12px; padding: 8px 10px; line-height: 1.35; }
+.sc-asp { display: grid; grid-template-columns: minmax(0, 150px) 1fr auto; gap: 3px 10px; align-items: center; padding: 7px 4px; border-top: 1px dashed #EEF2F7; cursor: pointer; border-radius: 10px; }
+.sc-asp:first-of-type { border-top: 0; }
+.sc-asp:hover { background: #F8FBFF; }
+.sc-asp.pin { background: #EFF6FF; border-top: 0; margin: 2px 0; }
+.sc-asp-l { font-size: 12.5px; font-weight: 700; color: #0F172A; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-asp-t { height: 7px; border-radius: 999px; background: #F1F5F9; display: flex; overflow: hidden; min-width: 50px; }
+.sc-asp-c { font-size: 11px; font-weight: 700; color: #334155; white-space: nowrap; }
+.sc-asp-q { grid-column: 1 / -1; font-size: 11px; color: #475569; font-style: italic; line-height: 1.35; display: flex; gap: 6px; align-items: baseline; }
+.sc-asp-q i { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; transform: translateY(-1px); }
+.sc-chip { font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 999px; margin-left: 5px; letter-spacing: .04em; vertical-align: 1px; }
+.sc-chip.strong { background: #DCFCE7; color: #15803D; } .sc-chip.few { background: #FEF3C7; color: #B45309; }
+.sc-rq { font-size: 11.5px; line-height: 1.4; padding: 7px 9px; border-radius: 10px; margin-top: 6px; color: #0F172A; }
+.sc-rq em { display: block; font-style: normal; font-weight: 700; font-size: 10.5px; margin-top: 2px; }
+.sc-rq.pos { background: #F0FDF4; } .sc-rq.pos em { color: #15803D; }
+.sc-rq.neg { background: #FEF2F2; } .sc-rq.neg em { color: #B91C1C; }
+.sc-rq.mixed { background: #FFFBEB; } .sc-rq.mixed em { color: #B45309; }
+.sc-rlink { background: none; border: 0; padding: 0; font-family: inherit; font-size: 13px; font-weight: 700; color: #2563EB; cursor: pointer; }
+
 
 /* ── Where to buy ── */
 .sc-store { align-items: center; }
@@ -470,7 +500,7 @@ function _productHTML(d) {
 ═══════════════════════════════════════════════ */
 const OPTS = [
   { key: 'summary',      icon: P.shield,  color: '#16A34A', bg: '#DCFCE7', label: 'Is it safe to buy?',     desc: 'Trust score + top reasons'           },
-  { key: 'reviews',      icon: P.search,  color: '#7C3AED', bg: '#F3E8FF', label: 'Fake reviews',           desc: 'Fake, bot and real reviews'          },
+  { key: 'reviews',      icon: P.search,  color: '#7C3AED', bg: '#F3E8FF', label: 'Reviews',                desc: 'Real vs fake + what buyers say'      },
   { key: 'seller',       icon: P.store,   color: '#2563EB', bg: '#DBEAFE', label: 'Seller trust',           desc: 'Seller history and trust tier'       },
   { key: 'price',        icon: P.rupee,   color: '#0891B2', bg: '#CFFAFE', label: 'Real price & discount',  desc: 'Fake sale check, price on other stores' },
   { key: 'alternatives', icon: P.bulb,    color: '#CA8A04', bg: '#FEF9C3', label: 'Where to buy & alternatives', desc: 'Trusted stores rated · similar products' },
@@ -558,6 +588,7 @@ async function _handleOption(option) {
     if (option === 'alternatives') _setupAltCards()
     _shadowRoot.querySelector('.sc-trusted-btn')?.addEventListener('click', e => { e.stopPropagation(); _handleOption('alternatives') })
     if (option === 'price') _setupWatch()
+    if (option === 'reviews') { _lastReview = result; _setupReviewAspects(cnt) }
     // Wire up data-href clicks (price best-found card, etc.) via event delegation
     cnt.querySelectorAll('[data-href]:not(.sc-alt-grid [data-href])').forEach(el => {
       el.addEventListener('click', () => {
@@ -624,20 +655,60 @@ function _verdict(txt, level) {
 }
 
 /* ── Review ── */
+const _QC = { pos: '#16A34A', neg: '#DC2626', mixed: '#F59E0B' }
+function _aspBar(a) {
+  const w = v => a.mentions ? (v / a.mentions * 100).toFixed(1) : 0
+  return `<div class="sc-asp-t"><i style="width:${w(a.pos)}%;background:#16A34A"></i><i style="width:${w(a.mixed)}%;background:#F59E0B"></i><i style="width:${w(a.neg)}%;background:#DC2626"></i></div>`
+}
+// Topics with 3+ opinions, "Matches photo?" / "Genuine product?" pinned first, then most talked about
+function _shownAspects(A) {
+  const list = (A?.aspects || []).filter(a => a.strength !== 'hidden')
+  const pinRank = a => a.key === 'matches' ? 0 : a.key === 'genuine' ? 1 : 2
+  return list.sort((x, y) => pinRank(x) - pinRank(y) || y.mentions - x.mentions)
+}
+function _aspectsHTML(A, S) {
+  if (!A) return ''
+  const shown = _shownAspects(A)
+  const hidden = (A.aspects || []).filter(a => a.strength === 'hidden').map(a => _esc(a.label))
+  const rows = shown.map(a => {
+    const q = a.quotes?.[0]
+    return `<div class="sc-asp${a.key === 'matches' || a.key === 'genuine' ? ' pin' : ''}" data-asp="${_esc(a.key)}" title="See every quote">
+      <div class="sc-asp-l">${_esc(a.label)}<span class="sc-chip ${a.strength}">${a.strength === 'strong' ? 'STRONG' : 'FEW'}</span></div>
+      ${_aspBar(a)}<div class="sc-asp-c">${a.pos} of ${a.mentions} positive</div>
+      ${q ? `<div class="sc-asp-q"><i style="background:${_QC[q.pol]}"></i>“${_esc(q.text)}”</div>` : ''}</div>`
+  }).join('')
+  const empty = !shown.length ? `<div style="text-align:center;padding:14px 6px">${_ic(P.search, 28, '#2563EB')}
+      <div style="font-weight:800;font-size:13.5px;margin-top:6px;color:#0F172A">Not enough reviews yet</div>
+      <div class="sc-rc-sub">We show a topic only when 3 or more real reviews give an opinion on it.${S?.real ? ` This page has ${S.real.length} real-looking review${S.real.length === 1 ? '' : 's'}.` : ''}</div></div>` : ''
+  return `<div class="sc-rc">
+    <div class="sc-rc-k">What buyers say · ${_esc(A.categoryLabel || 'Other')}</div>
+    <div class="sc-rc-sub" style="margin:2px 0 4px">Real reviews only: ${A.counted} counted, ${A.skippedFake} fake left out${shown.length ? ' · tap a topic' : ''}</div>
+    ${rows}${empty}
+    ${hidden.length ? `<div class="sc-rc-sub">Not enough reviews about: ${hidden.join(', ')}</div>` : ''}
+  </div>`
+}
+function _reviewCountsHTML(r, S) {
+  const n = S.checked || 0
+  const pct = v => n ? (v / n * 100).toFixed(1) : 0
+  const total = r.totalReviews || 0
+  const ver = r.verifiedReviewCount, verOf = r.verifiedReviewOf
+  return `<div class="sc-rc">
+    <div class="sc-rc-k">Reviews ScanCart read</div>
+    <div class="sc-rc-big"><b>${n}</b><span>${n ? 'shown on this page' : 'no review text on this page'}${total ? ` · ${total.toLocaleString('en-IN')} ratings in all` : ''}</span></div>
+    ${n ? `<div class="sc-rc-split"><i style="width:${pct(S.real.length)}%;background:#16A34A"></i><i style="width:${pct(S.unclear.length)}%;background:#CBD5E1"></i><i style="width:${pct(S.fake.length)}%;background:#DC2626"></i></div>
+    <div class="sc-rc-leg"><span><i style="background:#16A34A"></i>${S.real.length} look real</span><span><i style="background:#DC2626"></i>${S.fake.length} look fake</span><span><i style="background:#CBD5E1"></i>${S.unclear.length} can't judge</span></div>` : ''}
+    ${ver != null && verOf ? `<div class="sc-rc-sub">${ver} of ${verOf} review${verOf === 1 ? '' : 's'} marked Verified Purchase</div>` : ''}
+  </div>`
+}
 function _reviewResult(r) {
-  if (r.fakeReviewPercent == null) {
-    return `
-    ${_rHead(P.search,'#7C3AED','rgba(124,58,237,0.15)','Fake Review Check','Real vs fake reviews','N/A','#9CA3AF')}
-    ${_aiBox('The review check could not run for this scan, so it was left out of the Trust Score.')}`
-  }
-  const fake  = r.fakeReviewPercent||0
+  const S = r.reviewSamples || { checked: 0, real: [], fake: [], unclear: [] }
+  const A = r.reviewAspects
+  const fake  = r.fakeReviewPercent
+  const has   = fake != null
+  const c     = !has ? '#9CA3AF' : fake<20?'#16A34A':fake<50?'#CA8A04':'#DC2626'
+  const risk  = !has ? 'N/A' : fake<20?'LOW RISK':fake<50?'MEDIUM':'HIGH RISK'
   const total = r.totalReviews||0
-  const c     = fake<20?'#16A34A':fake<50?'#CA8A04':'#DC2626'
-  const risk  = fake<20?'LOW RISK':fake<50?'MEDIUM':'HIGH RISK'
-  const S     = r.reviewSamples || { checked: 0, real: [], fake: [], unclear: [] }
-  const insight = S.checked
-    ? `ScanCart read the ${S.checked} review${S.checked > 1 ? 's' : ''} shown on this page: ${S.real.length} look real, ${S.fake.length} look fake, ${S.unclear.length} too short to judge. Across all ${total.toLocaleString('en-IN')} ratings, about ${fake}% look suspicious from the rating pattern.`
-    : `No review texts were visible on this page. From the rating pattern, about ${fake}% of ${total.toLocaleString('en-IN')} ratings look suspicious.`
+  const worst = _shownAspects(A).filter(a => a.neg > a.pos && a.mentions >= 3).sort((x, y) => y.neg - x.neg)[0]
   const quote = (x, kind) => `
     <div class="sc-rv ${kind}">
       <p class="sc-rv-txt">“${_esc(x.text.length > 260 ? x.text.slice(0, 257) + '…' : x.text)}”</p>
@@ -648,16 +719,52 @@ function _reviewResult(r) {
       <summary><span class="sc-rv-dot ${kind}"></span>${title} <b>${list.length}</b></summary>
       ${list.map(x => quote(x, kind)).join('')}
     </details>` : ''
+  const insight = has
+    ? `Across all ${total.toLocaleString('en-IN')} ratings, about ${fake}% look suspicious from the rating pattern.`
+    : 'The rating-pattern check could not run for this scan, so it was left out of the Trust Score.'
   return `
-    ${_rHead(P.search,'#7C3AED','rgba(124,58,237,0.15)','Fake Review Check','Real vs fake reviews on this page',risk,c)}
-    ${_stats([S.real.length,'Look real','#16A34A'],[S.fake.length,'Look fake',S.fake.length?'#DC2626':null],[`${fake}%`,'Suspicious overall',c])}
-    ${_aiBox(insight)}
-    ${group('Real reviews — read these', S.real, 'real', true)}
-    ${group('Look fake', S.fake, 'fake', S.real.length === 0)}
+    ${_rHead(P.search,'#7C3AED','rgba(124,58,237,0.15)','Reviews','Real vs fake · what buyers say',risk,c)}
+    ${_reviewCountsHTML(r, S)}
+    ${r.reviewSpike?.spike ? `<div class="sc-rwarn" style="background:#FEF2F2;color:#B91C1C">⚠ ${_esc(r.reviewSpike.note)}</div>` : ''}
+    ${worst ? `<div class="sc-rwarn" style="background:#FFFBEB;color:#B45309">⚠ ${_esc(worst.label)}: ${worst.neg} of ${worst.mentions} buyers unhappy</div>` : ''}
+    ${_aspectsHTML(A, S)}
+    ${group('Real reviews — read these', S.real, 'real', !A || !_shownAspects(A).length)}
+    ${group('Flagged as fake', S.fake, 'fake', false)}
     ${group('Too short to judge', S.unclear, 'unclear', false)}
-    ${r.reviewSpike?.checked ? _verdict(r.reviewSpike.note, r.reviewSpike.spike ? 'red' : 'green') : ''}
-    ${_verdict(fake<20?'Reviews look genuine — rating looks trustworthy':fake<50?'Partly inflated — trust the real reviews above':'Reviews unreliable — do not trust the star rating',fake<20?'green':fake<50?'yellow':'red')}
+    ${_aiBox(insight)}
+    ${has ? _verdict(fake<20?'Reviews look genuine — rating looks trustworthy':fake<50?'Partly inflated — trust the real reviews above':'Reviews unreliable — do not trust the star rating',fake<20?'green':fake<50?'yellow':'red') : ''}
   `
+}
+// Tap a topic → every quote behind it (good / bad / mixed), back returns to the Reviews view
+function _aspectDetailHTML(a) {
+  const by = k => (a.quotes || []).filter(q => q.pol === k)
+  const sec = (title, k) => by(k).length ? `<div class="sc-rc-k" style="margin-top:4px">${title} (${by(k).length})</div>${by(k).map(q => `<div class="sc-rq ${k}">“${_esc(q.text)}”<em>Real-looking review</em></div>`).join('')}` : ''
+  return `<div class="sc-result">
+    <button class="sc-rlink" data-back="1">← Reviews</button>
+    <div class="sc-rc"><div class="sc-rc-k">What buyers say · ${_esc(a.label)}</div>
+      <div class="sc-rc-big"><b>${a.mentions}</b><span>real review${a.mentions === 1 ? '' : 's'} give an opinion</span></div>
+      <div class="sc-asp" style="cursor:default;padding:4px 0"><div class="sc-asp-l">${_esc(a.label)}<span class="sc-chip ${a.strength}">${a.strength === 'strong' ? 'STRONG' : 'FEW'}</span></div>${_aspBar(a)}<div class="sc-asp-c">${a.pos} of ${a.mentions} positive</div></div>
+      <div class="sc-rc-leg"><span><i style="background:#16A34A"></i>${a.pos} good</span><span><i style="background:#DC2626"></i>${a.neg} bad</span><span><i style="background:#F59E0B"></i>${a.mixed} mixed</span></div></div>
+    ${sec('Bad', 'neg')}${sec('Mixed', 'mixed')}${sec('Good', 'pos')}
+    ${a.quotes?.length < a.mentions ? `<div class="sc-rc-sub">Showing ${a.quotes.length} of ${a.mentions} quotes.</div>` : ''}
+    <div class="sc-rc-sub">Only reviews that passed the fake check are listed here.</div>
+  </div>`
+}
+function _setupReviewAspects(cnt) {
+  const saved = cnt.innerHTML
+  cnt.querySelectorAll('.sc-asp[data-asp]').forEach(el => el.addEventListener('click', e => {
+    e.stopPropagation()
+    const a = (_lastReview?.reviewAspects?.aspects || []).find(x => x.key === el.dataset.asp)
+    if (!a) return
+    cnt.innerHTML = _aspectDetailHTML(a)
+    cnt.scrollTop = 0
+    cnt.querySelector('[data-back]')?.addEventListener('click', ev => {
+      ev.stopPropagation()
+      cnt.innerHTML = saved
+      cnt.querySelector('.sc-back-btn')?.addEventListener('click', e2 => { e2.stopPropagation(); cnt.innerHTML = _optionsHTML(); _setupOptions() })
+      _setupReviewAspects(cnt)
+    })
+  }))
 }
 
 /* ── Price ── */

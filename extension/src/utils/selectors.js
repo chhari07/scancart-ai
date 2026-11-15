@@ -57,6 +57,9 @@ export const SELECTORS = {
     sellerLink:      '#sellerProfileTriggerId, #merchant-info a[href*="seller="], a[href*="/sp?"][href*="seller="]',   // href → seller profile URL
     reviewTexts:     '[data-hook="review-body"] span.a-size-base, span.review-text-content span, [data-hook="review-body"] > span',
     reviewDates:     '[data-hook="review-date"]',
+    breadcrumb:      '#wayfinding-breadcrumbs_feature_div',
+    verified:        '[data-hook="avp-badge"], [data-hook="avp-badge-linkless"]',
+    reviewBox:       '[data-hook="review"]',
     // Best-effort strikethrough/MRP element — mirror of the price parser's exclusion list,
     // this time targeting those elements directly to capture the claimed "was" price.
     mrp:             '.a-price.a-text-price .a-offscreen, #corePriceDisplay_desktop_feature_div .basisPrice .a-offscreen',
@@ -72,6 +75,7 @@ export const SELECTORS = {
     sellerLink:      '#sellerName a, .WS7GLi a',
     reviewTexts:     '._6K-7Co, .t-ZTKy, ._2-N8zT',
     reviewDates:     '._2sc7ZR',
+    breadcrumb:      '._1MR4o5, .r2CdBx',
     mrp:             '._3I9_wc, .yRaY8j',
   },
   myntra: {
@@ -84,6 +88,7 @@ export const SELECTORS = {
     seller:          '.pdp-sold-by-content a',
     sellerLink:      '.pdp-sold-by-content a',
     reviewTexts:     '.user-review-main .t1bM8P, .detailed-reviews .t1bM8P, .c1-w-QI',
+    breadcrumb:      '.breadcrumbs-container',
     mrp:             '.pdp-mrp s, .pdp-price s',
   },
   nykaa: {
@@ -96,6 +101,7 @@ export const SELECTORS = {
     seller:          '.css-1bz84cs a',
     sellerLink:      '.css-1bz84cs a',
     reviewTexts:     '.css-7ltm6i, .review-description, .css-1q6p7dz',
+    breadcrumb:      'nav[aria-label="breadcrumb"]',
     mrp:             '.css-17x46n5, .mrp-value s',
   },
   meesho: {
@@ -108,6 +114,7 @@ export const SELECTORS = {
     seller:          '[data-testid="supplier-name"]',
     sellerLink:      '[data-testid="supplier-link"]',
     reviewTexts:     '[data-testid="review-text"], .review-text, [data-testid="user-review"]',
+    breadcrumb:      '[class*="Breadcrumb"], [class*="breadcrumb"]',
     mrp:             'p[style*="line-through"], .mrp del',
   },
 }

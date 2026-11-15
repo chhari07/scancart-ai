@@ -58,6 +58,12 @@ export class ProductScanner {
       const reviewDates       = (domDates.length ? domDates : (ld?.reviewDates || [])).slice(0, 40)
       const mrpPrice          = this.parseMrp(sel.mrp)
       const pageSignals       = this.scanPageSignals()
+      // Store's own category trail (best signal for "What buyers say" topics) + Verified Purchase badges shown
+      const breadcrumb        = sel.breadcrumb ? (document.querySelector(sel.breadcrumb)?.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 200) : ''
+      // Verified Purchase: counted inside the review cards ScanCart reads, so "X of Y" always adds up
+      const reviewBoxes       = sel.reviewBox ? [...document.querySelectorAll(sel.reviewBox)].slice(0, 30) : []
+      const verifiedCount     = sel.verified && reviewBoxes.length ? reviewBoxes.filter(b => b.querySelector(sel.verified)).length : null
+      const verifiedOf        = verifiedCount == null ? null : reviewBoxes.length
 
       console.log(`[ScanCart Scanner] Extracted from ${this.platform}: "${name}" Rs.${price} (${reviewTexts.length} review texts)`)
 
@@ -78,6 +84,9 @@ export class ProductScanner {
         brand:        ld?.brand || '',
         sources:      { jsonLd: Boolean(ld), jsonLdPrice: Boolean(ld?.price) },
         pageSignals,
+        breadcrumb,
+        verifiedCount,
+        verifiedOf,
         platform:     this.platform,
         url:          window.location.href,
         extractedAt:  new Date().toISOString(),
@@ -275,14 +284,14 @@ export class ProductScanner {
       const texts = []
       nodes.forEach(node => {
         const text = node.textContent?.trim()
-        // Keep only meaningful, non-duplicate review bodies (20–400 chars)
-        if (text && text.length >= 20 && text.length <= 400 && !seen.has(text)) {
+        // Meaningful, non-duplicate review bodies; long ones are kept (often the most honest) but shortened
+        if (text && text.length >= 20 && !seen.has(text)) {
           seen.add(text)
-          texts.push(text)
+          texts.push(text.length > 600 ? text.slice(0, 600) + '…' : text)
         }
       })
-      // Return at most 8 reviews to keep the payload small
-      return texts.slice(0, 8)
+      // At most 30 (the backend's review check reads up to 30); about 18 KB at most
+      return texts.slice(0, 30)
     } catch { return [] }
   }
 
