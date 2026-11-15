@@ -16,6 +16,8 @@ let _aiOn        = true   // false when the backend ran basic rules only (no AI)
 let _tabId       = null
 let _pageUrl     = null   // set when the panel runs inside the toolbar popup (not on the page)
 let _lastReview  = null   // last scan result shown in the Reviews view (for the aspect detail screen)
+let _scan        = null   // { url, result } full scan of this page — every tab reuses it (no re-scan)
+let _alts        = null   // { url, result } where-to-buy lookup of this page
 const _url = () => _pageUrl || window.location.href
 
 // What the page knows right now — the toolbar popup reads this (one source of truth)
@@ -34,10 +36,11 @@ function _renderStrip() {
   const [, words] = _fabTone(score)
   const col = score >= 70 ? '#16A34A' : score >= 45 ? '#F59E0B' : '#DC2626'
   const fakeSale = st.full == null && st.quick?.discount === 'fake_sale'
-  el.innerHTML = `<div class="sc-score-strip" style="border-color:${col}55">
-    <div class="n" style="background:${col}">${score}</div>
-    <div><div class="w" style="color:${col}">${fakeSale ? 'Sale looks fake' : words}</div>
-    <div class="s">${st.full != null ? 'Full check' : 'Quick check from page data'} · tap a check below for details</div></div></div>`
+  const r = _scan?.url === _url() ? _scan.result : null
+  const sub = st.full != null
+    ? `${r?.checksCompleted ?? 6} of ${r?.checksTotal ?? 6} checks completed`
+    : 'Quick check from page data · pick a check below'
+  el.innerHTML = `<div class="sc-sstrip"><span class="sc-spill" style="background:${col}">${score} · ${fakeSale ? 'Sale looks fake' : words}</span><span class="sc-ssub">${sub}</span></div>`
 }
 function _announce() {
   _renderStrip()
@@ -404,6 +407,14 @@ const _CSS = `
 #sc-panel.sc-inline .sc-pb { overflow: visible; }
 
 /* ── Score strip (quick or full score, same number as the button) ── */
+.sc-sstrip { margin: 0 14px 10px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sc-spill { font-size: 12.5px; font-weight: 800; border-radius: 999px; padding: 6px 12px; color: #fff; }
+.sc-ssub { font-size: 11.5px; color: #64748B; font-weight: 600; }
+.sc-tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; padding: 0 0 10px; margin: 0 0 2px; border-bottom: 1px solid #EEF2F7; }
+.sc-tabs::-webkit-scrollbar { display: none; }
+.sc-tab { flex-shrink: 0; font-family: inherit; font-size: 11.5px; font-weight: 700; color: #64748B; padding: 6px 10px; border-radius: 999px; border: 0; background: transparent; cursor: pointer; }
+.sc-tab:hover { background: #F1F5F9; color: #0F172A; }
+.sc-tab.on { background: #2563EB; color: #fff; }
 .sc-score-strip { margin: 0 14px 12px; display: flex; align-items: center; gap: 12px; border-radius: 16px; padding: 10px 12px; background: #fff; border: 1.5px solid #E2E8F0; }
 .sc-score-strip .n { width: 42px; height: 42px; border-radius: 12px; color: #fff; font-size: 18px; font-weight: 900; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .sc-score-strip .w { font-size: 13.5px; font-weight: 800; }
@@ -546,6 +557,10 @@ async function _handleOption(option) {
   const cnt = _shadowRoot.getElementById('sc-content')
   if (!cnt) return
 
+  // Tabs reuse this page's scan: switching tabs never re-runs the checks
+  const cache = option === 'alternatives' ? _alts : _scan
+  if (cache && cache.url === _url()) { _showResult(cnt, option, cache.result); return }
+
   const steps = _STEPS[option] || ['Analyzing…']
   let si = 0
 
@@ -579,28 +594,9 @@ async function _handleOption(option) {
       : await analyzeProduct(_url(), _productData)
     if (option !== 'alternatives') _aiOn = result.aiUsed !== false
     clearInterval(iv)
-    cnt.innerHTML = _resultHTML(option, result)
-    _shadowRoot.querySelector('.sc-back-btn')?.addEventListener('click', e => {
-      e.stopPropagation()
-      cnt.innerHTML = _optionsHTML()
-      _setupOptions()
-    })
-    if (option === 'alternatives') _setupAltCards()
-    _shadowRoot.querySelector('.sc-trusted-btn')?.addEventListener('click', e => { e.stopPropagation(); _handleOption('alternatives') })
-    if (option === 'price') _setupWatch()
-    if (option === 'reviews') { _lastReview = result; _setupReviewAspects(cnt) }
-    // Wire up data-href clicks (price best-found card, etc.) via event delegation
-    cnt.querySelectorAll('[data-href]:not(.sc-alt-grid [data-href])').forEach(el => {
-      el.addEventListener('click', () => {
-        const url = el.dataset.href
-        if (url) window.open(url, '_blank', 'noopener')
-      })
-    })
-    if (result.trustScore !== undefined) {
-      setFabResult(result.trustScore)
-      // Running inside the popup → tell the page's button too
-      if (_pageUrl && _tabId != null) { try { chrome.tabs.sendMessage(_tabId, { type: 'SCAN_COMPLETE', trustScore: result.trustScore }) } catch {} }
-    }
+    if (option === 'alternatives') _alts = { url: _url(), result }
+    else _scan = { url: _url(), result }
+    _showResult(cnt, option, result)
   } catch (err) {
     clearInterval(iv)
     cnt.innerHTML = `
@@ -619,6 +615,38 @@ async function _handleOption(option) {
   }
 }
 
+const TABS = [['summary', 'Overview'], ['reviews', 'Reviews'], ['seller', 'Seller'], ['price', 'Price'], ['alternatives', 'Where to buy']]
+function _tabsHTML(opt) {
+  return `<div class="sc-tabs" role="tablist">${TABS.map(([k, l]) => `<button class="sc-tab${k === opt ? ' on' : ''}" role="tab" data-tab="${k}" aria-selected="${k === opt}">${l}</button>`).join('')}</div>`
+}
+
+
+// Draw one tab of the result and wire its buttons (used after a scan, on tab switch, and on "← Reviews")
+function _showResult(cnt, option, result) {
+  cnt.innerHTML = _resultHTML(option, result)
+  cnt.scrollTop = 0
+  cnt.querySelectorAll('.sc-tab[data-tab]').forEach(t => t.addEventListener('click', e => {
+    e.stopPropagation()
+    if (t.dataset.tab !== option) _handleOption(t.dataset.tab)
+  }))
+  if (option === 'alternatives') _setupAltCards()
+  cnt.querySelector('.sc-trusted-btn')?.addEventListener('click', e => { e.stopPropagation(); _handleOption('alternatives') })
+  if (option === 'price') _setupWatch()
+  if (option === 'reviews') { _lastReview = result; _setupReviewAspects(cnt) }
+  // Wire up data-href clicks (price best-found card, etc.) via event delegation
+  cnt.querySelectorAll('[data-href]:not(.sc-alt-grid [data-href])').forEach(el => {
+    el.addEventListener('click', () => {
+      const url = el.dataset.href
+      if (url) window.open(url, '_blank', 'noopener')
+    })
+  })
+  if (result.trustScore !== undefined) {
+    setFabResult(result.trustScore)
+    // Running inside the popup → tell the page's button too
+    if (_pageUrl && _tabId != null) { try { chrome.tabs.sendMessage(_tabId, { type: 'SCAN_COMPLETE', trustScore: result.trustScore }) } catch {} }
+  }
+}
+
 function _resultHTML(opt, r) {
   const body = {
     reviews:      _reviewResult(r),
@@ -627,7 +655,7 @@ function _resultHTML(opt, r) {
     alternatives: _altResult(r),
     summary:      _summaryResult(r),
   }[opt] || '<p class="sc-err-msg">Unknown option.</p>'
-  return `<div class="sc-result">${body}<button class="sc-back-btn">Analyze Something Else</button></div>`
+  return `<div class="sc-result">${_tabsHTML(opt)}${body}</div>`
 }
 
 /* shared helpers */
@@ -751,7 +779,6 @@ function _aspectDetailHTML(a) {
   </div>`
 }
 function _setupReviewAspects(cnt) {
-  const saved = cnt.innerHTML
   cnt.querySelectorAll('.sc-asp[data-asp]').forEach(el => el.addEventListener('click', e => {
     e.stopPropagation()
     const a = (_lastReview?.reviewAspects?.aspects || []).find(x => x.key === el.dataset.asp)
@@ -760,9 +787,7 @@ function _setupReviewAspects(cnt) {
     cnt.scrollTop = 0
     cnt.querySelector('[data-back]')?.addEventListener('click', ev => {
       ev.stopPropagation()
-      cnt.innerHTML = saved
-      cnt.querySelector('.sc-back-btn')?.addEventListener('click', e2 => { e2.stopPropagation(); cnt.innerHTML = _optionsHTML(); _setupOptions() })
-      _setupReviewAspects(cnt)
+      _showResult(cnt, 'reviews', _lastReview)
     })
   }))
 }
