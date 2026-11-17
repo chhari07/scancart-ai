@@ -17,6 +17,7 @@ import { calculateTrustScore, getTrustLevel, buildAuthenticitySummary } from '..
 import { detectPlatform } from '../utils/platformDetector.js'
 import { reviewDateSpike } from '../utils/reviewSpike.js'
 import { productKeyFor, getHistory, summarise, discountVerdict } from './priceStore.js'
+import { findSameProduct } from './sameProduct.js'
 
 export async function runAgenticScan({ url, productData, userId }) {
   const startTime = Date.now()
@@ -191,6 +192,8 @@ export async function runAgenticScan({ url, productData, userId }) {
     fairMarketPrice: price.fairMarketPrice     || 0,
     mrp:             price.mrp                 || 0,
     priorPriceVerdict: price.priorPriceVerdict || null,
+    // Same product on other stores (variant rules applied) + what was left out and why
+    priceMatches:    price.priceMatches        || null,
 
     // ── Price history (ScanCart's own observations) + is the discount real? ──
     priceHistory: await buildPriceHistory(historyP, productKey, productData),
@@ -249,8 +252,13 @@ export async function runAgenticScan({ url, productData, userId }) {
 // On-demand Alternatives — only runs when the user asks for cheaper options.
 export async function runAlternatives({ url, productData }) {
   const started = Date.now()
-  const alt = await alternativeLightbulbAgent({ url, productData })
+  // Same product on other sites (with its reviews) runs next to the alternatives search
+  const [alt, same] = await Promise.all([
+    alternativeLightbulbAgent({ url, productData }),
+    findSameProduct({ url, productData }).catch(err => ({ listings: [], checkedStores: [], note: 'Could not check other sites: ' + err.message })),
+  ])
   return {
+    sameProduct:            same,
     alternative:            alt.bestAlternative ? normaliseRichAlt(alt.bestAlternative) : null,
     alternatives:           (alt.alternatives || alt.allAlternatives || []).map(normaliseAlt),
     allAlternatives:        (alt.allAlternatives || []).map(normaliseRichAlt),
@@ -266,7 +274,7 @@ async function buildPriceHistory(historyP, productKey, productData) {
   const price = Number(productData?.price) || 0
   return {
     productKey,
-    points: points.map(p => ({ t: p.t, price: p.price })),
+    points: points.map(p => ({ t: p.t, price: p.price, ...(p.mrp ? { mrp: p.mrp } : {}) })),
     summary: summarise(points),
     discount: price > 0 ? discountVerdict(points, { price, mrp: Number(productData?.mrpPrice) || 0 }) : null,
   }

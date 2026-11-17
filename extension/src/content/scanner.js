@@ -102,6 +102,7 @@ export class ProductScanner {
         mrpPrice,
         brand:        ld?.brand || '',
         sources:      { jsonLd: Boolean(ld), jsonLdPrice: Boolean(ld?.price) },
+        productIds:   this.productIds(ld),
         pageSignals,
         breadcrumb,
         verifiedCount,
@@ -114,6 +115,20 @@ export class ProductScanner {
       console.log('[ScanCart Scanner] Extraction error:', err.message)
       return null
     }
+  }
+
+  // IDs that identify this exact product (Price check → Match): store ID first, then barcode / model
+  productIds(ld) {
+    const href = window.location.href
+    const asin = (href.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i) || [])[1]
+    let pid = null
+    try { pid = new URL(href).searchParams.get('pid') } catch {}
+    const ids = {
+      storeId: asin ? asin.toUpperCase() : pid || (this.platform === 'myntra' ? (href.match(/\/(\d{6,})\/buy/) || [])[1] : null) || null,
+      gtin: ld?.gtin || null, model: ld?.model || ld?.mpn || null, sku: ld?.sku || null,
+      color: ld?.color || null, size: ld?.size || null,
+    }
+    return Object.values(ids).some(Boolean) ? ids : null
   }
 
   // ── Field parsers ───────────────────────────────────────────────

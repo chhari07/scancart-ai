@@ -7,6 +7,7 @@ import { detectPlatform } from '../utils/platformDetector.js'
 import { validatePrice, detectCategory } from '../utils/priceValidator.js'
 import { searchAmazonIndia, amazonSearchUrl, flipkartSearchUrl } from '../services/searchProducts.js'
 import { productKeyFor, getHistory, summarise, recordPrice } from '../services/priceStore.js'
+import { compareProducts } from '../utils/productMatch.js'
 
 // ScanCart's own tracked prices for this exact listing (Firestore or the local store).
 async function getPriorPriceStats(key, windowDays = 30) {
@@ -98,7 +99,8 @@ export async function pricePiggyAgent({ url, productData }) {
     }
   }
 
-  if (realBestPrice) {
+  const priceMatches = realBestPrice?.matches || null
+  if (realBestPrice?.price > 0) {
     // Savings always = currentPrice (from product page) − best price found
     const savings = Math.max(0, currentPrice - realBestPrice.price)
     local.bestPrice = { ...realBestPrice, savings }
@@ -165,6 +167,7 @@ Return ONLY valid JSON:
       currentPrice,
       mrp,
       priorPriceVerdict,
+      priceMatches,
       fairMarketPrice: enhanced.fairMarketPrice || local.fairMarketPrice,
       priceScore:      clamp(enhanced.priceScore  ?? local.priceScore, 0, 100),
       priceSuspicious: enhanced.priceSuspicious   ?? local.priceSuspicious,
@@ -190,6 +193,7 @@ Return ONLY valid JSON:
       currentPrice,
       mrp,
       priorPriceVerdict,
+      priceMatches,
       ...local,
       priceDiffReason: buildDefaultReason(currentPrice, local.bestPrice.price, local.bestPrice.platform),
       priceFactors:    [],
@@ -199,29 +203,28 @@ Return ONLY valid JSON:
   }
 }
 
-// ── Real best price: search Amazon, exclude the original product ───────
-async function findRealBestPrice(name, currentPrice, platform, originalAsin = null) {
-  const query = name.split(' ').slice(0, 5).join(' ')
+// ── Real best price: search Amazon, keep only the SAME product (variant rules) ───────
+// Returns the cheapest matched listing plus { matched, excluded } so the panel can show
+// "Same product elsewhere" and "Not the same, left out".
+export async function findRealBestPrice(name, currentPrice, platform, originalAsin = null, search = searchAmazonIndia) {
+  const query = name.split(' ').slice(0, 6).join(' ')
   try {
-    const results = await searchAmazonIndia(query, 6)
-    const priced  = results.filter(r => {
-      if (!r.price || r.price <= 0) return false
-      if (currentPrice > 0 && r.price >= currentPrice * 3) return false  // unreasonably expensive
-      // Exclude the product being scanned (same ASIN = same product)
+    const results = await search(query, 8)
+    const matched = [], excluded = []
+    for (const r of results) {
+      if (!r.price || r.price <= 0) continue
       const asin = r.url?.match(/\/dp\/([A-Z0-9]{10})/i)?.[1]
-      if (originalAsin && asin && asin === originalAsin) return false
-      return true
-    })
-    if (priced.length === 0) return null
-
-    priced.sort((a, b) => a.price - b.price)
-    const cheapest = priced[0]
-
+      if (originalAsin && asin && asin === originalAsin) continue          // the product being scanned
+      const m = compareProducts(name, r.name, { pagePrice: currentPrice, otherPrice: r.price })
+      const row = { platform: r.platform || 'amazon', name: r.name, price: r.price, url: r.url }
+      if (m.same) matched.push({ ...row, how: m.how, score: Math.round(m.score * 100) })
+      else excluded.push({ ...row, reason: m.reason })
+    }
+    matched.sort((a, b) => a.price - b.price)
+    const cheapest = matched[0]
     return {
-      platform: 'amazon',
-      price:    cheapest.price,
-      url:      cheapest.url,
-      name:     cheapest.name,
+      ...(cheapest ? { platform: cheapest.platform, price: cheapest.price, url: cheapest.url, name: cheapest.name } : { platform: 'amazon', price: 0, url: null }),
+      matches: { matched: matched.slice(0, 4), excluded: excluded.slice(0, 3) },
       // savings calculated in caller using currentPrice (the actual page price)
     }
   } catch { return null }

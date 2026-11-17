@@ -30,7 +30,7 @@ priceRouter.post('/observe', async (req, res) => {
     const discount = discountVerdict(before, { price: d.price, mrp: d.mrpPrice || 0 })
     const saved = await recordPrice(key, { price: d.price, mrp: d.mrpPrice, platform, productName: d.productName, url })
     const points = await getHistory(key, { days: 90 })
-    res.json({ success: true, key, saved, store: storeMode(), points: points.map(p => ({ t: p.t, price: p.price })), summary: summarise(points), discount })
+    res.json({ success: true, key, saved, store: storeMode(), points: points.map(p => ({ t: p.t, price: p.price, ...(p.mrp ? { mrp: p.mrp } : {}) })), summary: summarise(points), discount })
   } catch (err) {
     console.error('price/observe failed:', err.message)
     res.status(500).json({ error: 'Could not save price', message: err.message })

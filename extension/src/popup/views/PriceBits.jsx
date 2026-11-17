@@ -47,21 +47,23 @@ export function PriceGraph({ points, current }) {
   )
 }
 
+// Keyed by verdict (Figma: Good deal · Fair price · Wait · Fake discount); old builds only send status
 const DISCOUNT = {
-  fake_sale:          { cls: 'red',   Icon: AlertTriangle, head: 'Sale looks fake' },
-  new_low:            { cls: 'green', Icon: TrendingDown,  head: 'Real deal: lowest price seen' },
-  usual:              { cls: 'blue',  Icon: Check,         head: 'Usual price' },
-  above_usual:        { cls: 'amber', Icon: AlertTriangle, head: 'Higher than usual' },
+  fake_discount:      { cls: 'red',   Icon: AlertTriangle, head: 'Fake discount' },
+  good_deal:          { cls: 'green', Icon: TrendingDown,  head: 'Good deal' },
+  fair:               { cls: 'blue',  Icon: Check,         head: 'Fair price' },
+  wait:               { cls: 'amber', Icon: AlertTriangle, head: 'Wait' },
   not_enough_history: { cls: 'blue',  Icon: Info,          head: 'Is the discount real? Not known yet' },
 }
+const FROM_STATUS = { fake_sale: 'fake_discount', new_low: 'good_deal', usual: 'fair', above_usual: 'wait' }
 export function DiscountCard({ discount }) {
   if (!discount) return null
-  const k = DISCOUNT[discount.status] || DISCOUNT.not_enough_history
+  const k = DISCOUNT[discount.verdict || FROM_STATUS[discount.status]] || DISCOUNT.not_enough_history
   const color = { red: '#DC2626', green: '#16A34A', amber: '#B45309', blue: '#2563EB' }[k.cls]
   return (
     <div className={`sc-note ${k.cls === 'blue' ? 'blue' : ''}`} style={k.cls !== 'blue' ? { background: { red: '#FEF2F2', green: '#F0FDF4', amber: '#FFFBEB' }[k.cls], borderColor: 'transparent' } : undefined}>
       <k.Icon size={16} color={color} style={{ flexShrink: 0, marginTop: 1 }} />
-      <div><b style={{ color }}>{k.head}</b><div style={{ marginTop: 3 }}>{discount.message}</div></div>
+      <div><b style={{ color }}>{k.head}{discount.title ? ` · ${discount.title}` : ''}</b><div style={{ marginTop: 3 }}>{discount.message}</div></div>
     </div>
   )
 }

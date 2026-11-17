@@ -18,6 +18,9 @@ const HOST_ID = 'scancart-host'
 
 let _productData = null
 let _shadowRoot  = null
+let _lastWatch = false   // a watch exists for this page (Sources card)
+let _gStats = null       // graph stat row for the current verdict (Figma: Lowest · Average · Highest)
+let _lastVerdict = null   // price verdict shown on the Price tab (Wait → watch target = the earlier low)
 let _priceInfo   = null   // { points, summary, discount } from /api/price/observe on page load
 let _quick       = null   // quick badge result
 let _full        = null   // full scan score (number) once the user ran a check
@@ -494,6 +497,72 @@ const _CSS = `
 .sc-watch-btn.ghost { background: #fff; color: #0F172A; border: 1px solid #E2E8F0; }
 .sc-watch-note { font-size: 11px; color: #64748B; line-height: 1.45; }
 
+/* ── Price check (Figma: scancart-price-check) ── */
+.sc-pc { border-radius: 16px; padding: 14px; border: 1px solid #E2E8F0; background: #fff; }
+.sc-pc.green { background: #F0FDF4; border-color: #BBF7D0; } .sc-pc.amber { background: #FFFBEB; border-color: #FDE68A; }
+.sc-pc.red { background: #FEF2F2; border-color: #FECACA; } .sc-pc.blue { background: #EFF6FF; border-color: #E2E8F0; }
+.sc-pc-top { display: flex; align-items: center; gap: 10px; }
+.sc-pc-emoji { font-size: 24px; line-height: 1; flex-shrink: 0; }
+.sc-pc-pill { display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: .08em; border-radius: 999px; padding: 3px 8px; }
+.sc-pc-pill.green { background: #DCFCE7; color: #15803D; } .sc-pc-pill.amber { background: #FEF3C7; color: #B45309; }
+.sc-pc-pill.red { background: #FECACA; color: #B91C1C; } .sc-pc-pill.blue { background: #DBEAFE; color: #2563EB; } .sc-pc-pill.grey { background: #F1F5F9; color: #64748B; }
+.sc-pc-title { font-size: 16px; font-weight: 800; color: #0F172A; letter-spacing: -.3px; margin-top: 4px; line-height: 1.25; }
+.sc-pc-msg { font-size: 12px; color: #64748B; line-height: 1.5; margin-top: 8px; }
+.sc-pc-real { margin-top: 10px; border-top: 1px solid #FECACA; padding-top: 10px; font-size: 12px; color: #0F172A; }
+.sc-pc-real div { display: flex; justify-content: space-between; margin-top: 4px; }
+.sc-pc-bar { height: 7px; border-radius: 999px; background: #E2E8F0; margin-top: 8px; overflow: hidden; }
+.sc-pc-bar span { display: block; height: 100%; background: #DC2626; border-radius: 999px; }
+.sc-pc-reads { display: flex; gap: 3px; margin-top: 10px; }
+.sc-pc-reads span { flex: 1; height: 18px; border-radius: 5px; background: #E2E8F0; }
+.sc-pc-reads span.on { background: #2563EB; }
+.sc-pc-k { font-size: 10.5px; font-weight: 800; color: #64748B; text-transform: uppercase; letter-spacing: .1em; display: flex; align-items: center; gap: 6px; }
+.sc-pc-k b { margin-left: auto; letter-spacing: 0; text-transform: none; }
+.sc-pc-row { display: flex; align-items: center; gap: 8px; margin-top: 9px; font-size: 12.5px; color: #0F172A; }
+.sc-pc-row .nm { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+.sc-pc-row .pr { margin-left: auto; font-weight: 800; white-space: nowrap; }
+.sc-pc-row .why { font-size: 11px; color: #64748B; }
+.sc-pc-x { width: 16px; height: 16px; border-radius: 50%; background: #DC2626; color: #fff; font-size: 9px; font-weight: 800; display: grid; place-items: center; flex-shrink: 0; }
+.sc-pc-note { font-size: 11px; color: #64748B; line-height: 1.45; margin-top: 8px; }
+.sc-pc details summary { list-style: none; cursor: pointer; }
+.sc-pc details summary::-webkit-details-marker { display: none; }
+.sc-pc-cta { display: flex; align-items: center; justify-content: space-between; width: 100%; border: 0; border-radius: 999px; background: #0F172A; color: #fff; font: inherit; font-size: 14px; font-weight: 700; padding: 5px 5px 5px 20px; cursor: pointer; min-height: 44px; }
+.sc-pc-cta i { width: 34px; height: 34px; border-radius: 50%; background: #fff; color: #0F172A; display: grid; place-items: center; font-style: normal; font-size: 15px; font-weight: 800; }
+.sc-pc-cta.purple { background: #5E5CE6; } .sc-pc-cta.purple i { color: #5E5CE6; }
+.sc-pc-cta.ghost { background: #fff; color: #0F172A; border: 1.5px solid #0F172A; justify-content: center; padding: 0 16px; }
+.sc-pc-ctas { display: flex; gap: 8px; } .sc-pc-ctas > * { flex: 1; }
+.sc-pc-chk { display: flex; align-items: center; gap: 9px; font-size: 12.5px; font-weight: 600; color: #0F172A; padding: 8px 0; border-top: 1px solid #F1F5F9; }
+.sc-pc-chk:first-child { border-top: 0; }
+.sc-pc-chk b { margin-left: auto; font-size: 12px; }
+.sc-pc-dot { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-size: 10px; font-weight: 800; flex-shrink: 0; }
+.sc-pc-src { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.sc-pc-src .ic { width: 34px; height: 34px; border-radius: 10px; background: #EFF6FF; display: grid; place-items: center; font-size: 15px; flex-shrink: 0; }
+.sc-pc-src .t { font-size: 12.5px; font-weight: 700; color: #0F172A; } .sc-pc-src .d { font-size: 11px; color: #64748B; line-height: 1.35; }
+.sc-pc-src .sc-pc-pill { margin-left: auto; flex-shrink: 0; }
+.sc-g3 { display: grid; grid-template-columns: repeat(3, 1fr); text-align: center; margin-top: 8px; gap: 6px; }
+.sc-g3 b { display: block; font-size: 14px; font-weight: 800; color: #0F172A; } .sc-g3 span { font-size: 11px; color: #64748B; }
+.sc-watch.hide { display: none; }
+/* ── Same product on other sites (Where to buy) ── */
+.sc-sp { display: flex; flex-direction: column; gap: 10px; }
+.sc-sp-card { background: #fff; border: 1px solid #E2E8F0; border-radius: 16px; padding: 14px; }
+.sc-sp-card.here { background: #F8FAFC; }
+.sc-sp-top { display: flex; align-items: center; gap: 8px; }
+.sc-sp-store { font-size: 14px; font-weight: 800; color: #0F172A; }
+.sc-sp-price { margin-left: auto; text-align: right; font-size: 16px; font-weight: 800; color: #0F172A; white-space: nowrap; }
+.sc-sp-price small { display: block; font-size: 11px; font-weight: 700; }
+.sc-sp-name { font-size: 11.5px; color: #64748B; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-sp-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 10px; }
+.sc-sp-stats div { background: #F8FAFC; border-radius: 10px; padding: 7px 4px; text-align: center; }
+.sc-sp-stats b { display: block; font-size: 13.5px; font-weight: 800; color: #0F172A; }
+.sc-sp-stats span { font-size: 10.5px; color: #64748B; }
+.sc-sp-bar { display: flex; height: 7px; border-radius: 999px; overflow: hidden; background: #E2E8F0; margin-top: 10px; }
+.sc-sp-bar i { display: block; height: 100%; }
+.sc-sp-leg { display: flex; justify-content: space-between; font-size: 11px; color: #64748B; margin-top: 5px; }
+.sc-sp-line { font-size: 11.5px; color: #0F172A; margin-top: 8px; line-height: 1.45; }
+.sc-sp-line span { color: #64748B; }
+.sc-sp-quote { font-size: 11.5px; color: #475569; font-style: italic; margin-top: 8px; padding-left: 10px; border-left: 3px solid #BBF7D0; line-height: 1.45; }
+.sc-sp-open { display: flex; align-items: center; justify-content: space-between; width: 100%; margin-top: 12px; border: 0; border-radius: 999px; background: #0F172A; color: #fff; font: inherit; font-size: 12.5px; font-weight: 700; padding: 4px 4px 4px 16px; cursor: pointer; }
+.sc-sp-open i { width: 28px; height: 28px; border-radius: 50%; background: #fff; color: #0F172A; display: grid; place-items: center; font-style: normal; font-weight: 800; }
+
 /* ── Real vs fake reviews ── */
 .sc-rv-group { background: #fff; border: 1px solid #E2E8F0; border-radius: 16px; padding: 4px 12px; }
 .sc-rv-group summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 9px 0; font-size: 12.5px; font-weight: 800; color: #0F172A; }
@@ -838,7 +907,7 @@ function _showResult(cnt, option, result) {
   }))
   if (option === 'alternatives') _setupAltCards()
   cnt.querySelector('.sc-trusted-btn')?.addEventListener('click', e => { e.stopPropagation(); _handleOption('alternatives') })
-  if (option === 'price') { _setupWatch(); _setupGraph(cnt) }
+  if (option === 'price') { _setupWatch(); _setupGraph(cnt); _setupPriceCtas(cnt) }
   if (option === 'reviews') {
     _lastReview = result; _setupReviewAspects(cnt)
     // Switch review pages on/off, then re-scan this page so the counts match the setting
@@ -1045,53 +1114,54 @@ function _setupReviewAspects(cnt) {
   }))
 }
 
-/* ── Price ── */
+/* ── Price (Figma: scancart-price-check frames 02–08) ── */
 function _priceResult(r) {
-  const cur     = _productData?.price || r.productPrice || 0
-  const rawBest = r.bestPrice?.price || 0
-  const plat    = r.bestPrice?.platform || '—'
-  const platUrl = r.bestPrice?.url || null
-
-  // Only show "Best Found" when it is strictly cheaper than the current price.
-  // Never surface a higher price as a "best" recommendation.
-  const hasCheaper = cur > 0 && rawBest > 0 && rawBest < cur
-  const best        = hasCheaper ? rawBest : 0
-  const save        = hasCheaper ? (cur - best) : 0
-
-  const insight = hasCheaper
-    ? `Same product available on ${plat} for ₹${best.toLocaleString('en-IN')}, saving you ₹${save.toLocaleString('en-IN')}.`
-    : `No lower price found in ScanCart's search — ₹${cur.toLocaleString('en-IN')} looks like a fair price.`
-
-  const bestLabel = hasCheaper ? `₹${best.toLocaleString('en-IN')}` : 'None cheaper'
-  const bestSub   = hasCheaper ? `${plat}${platUrl ? ' ↗' : ''}` : 'in ScanCart\'s search'
-
+  const cur  = _productData?.price || r.productPrice || 0
   const hist = pickHistory(r.priceHistory, _priceInfo) || _priceInfo
+  const d    = hist?.discount || null
+  const v    = d ? (d.verdict || _FROM_STATUS[d.status] || 'not_enough_history') : 'not_enough_history'
+  _lastVerdict = d
+  const sum  = d?.history || null
+  const cheaper = (r.priceMatches?.matched || []).some(m => m.price < cur) || (r.bestPrice?.price > 0 && r.bestPrice.price < cur)
+  const ok = c => `<span class="sc-pc-dot" style="background:${c}">${c === '#16A34A' ? '✓' : '!'}</span>`
+  const G = '#16A34A', A = '#F59E0B'
+  const chk = rows => `<div class="sc-pc" style="padding:6px 14px">${rows.map(([c, k, val, vc]) => `<div class="sc-pc-chk">${ok(c)}${k}<b style="color:${vc}">${val}</b></div>`).join('')}</div>`
+
+  // graph stats row (Figma: per verdict)
+  _gStats = !sum ? null
+    : v === 'good_deal' ? [[_rs(cur), 'Now'], [_rs(sum.avg), 'Average'], [_rs(sum.high), 'Highest']]
+    : v === 'wait'      ? [[_rs(d.wasPrice), `Lowest (${d.wasDaysAgo <= 0 ? 'today' : d.wasDaysAgo + ' days ago'})`], [_rs(cur), 'Now'], [String(d.drops || 0), 'Drops']]
+    : [[_rs(sum.low), 'Lowest'], [_rs(sum.avg), 'Average'], [_rs(sum.high), 'Highest']]
+
+  let extra = '', cta = ''
+  const watchCta = (label) => `<button class="sc-pc-cta purple" data-pc="watch">${label}<i>🔔</i></button>`
+  if (v === 'good_deal') {
+    extra = chk([[G, 'vs lowest seen', cur <= sum.low ? 'Same' : `${_rs(cur - sum.low)} more`, '#15803D'],
+                 [cur <= sum.avg ? G : A, 'vs average', cur === sum.avg ? 'Same' : cur < sum.avg ? `${_rs(sum.avg - cur)} less` : `${_rs(cur - sum.avg)} more`, cur <= sum.avg ? '#15803D' : '#B45309'],
+                 [cheaper ? A : G, 'Cheaper on other stores', cheaper ? 'Yes' : 'No', cheaper ? '#B45309' : '#15803D']])
+    cta = `<button class="sc-pc-cta" data-pc="close">Buy on ${_esc(_storeName())}<i>›</i></button>`
+  } else if (v === 'fair') {
+    extra = chk([[A, 'vs lowest seen', `${_rs(cur - sum.low)} more`, '#B45309'],
+                 [cur <= sum.avg ? G : A, 'vs average', cur === sum.avg ? 'Same' : cur < sum.avg ? `${_rs(sum.avg - cur)} less` : `${_rs(cur - sum.avg)} more`, cur <= sum.avg ? '#15803D' : '#B45309'],
+                 [cheaper ? A : G, 'Cheaper on other stores', cheaper ? 'Yes' : 'No', cheaper ? '#B45309' : '#15803D']])
+    cta = `<div class="sc-pc-ctas"><button class="sc-pc-cta ghost" data-pc="watch">Watch price</button><button class="sc-pc-cta" data-pc="close">Buy now<i>›</i></button></div>`
+  } else if (v === 'wait') {
+    cta = watchCta(`Tell me at ${_rs(d.wasPrice)}`) + `<p class="sc-pc-note" style="text-align:center;margin-top:0">We check every 6 hours and send a ${globalThis.App?.notify ? 'phone' : 'Chrome'} notification.</p>`
+  } else if (v === 'fake_discount') {
+    cta = `<button class="sc-pc-cta" data-pc="alts">See cheaper options<i>›</i></button>`
+  } else {
+    cta = watchCta('Watch this price')
+  }
+  if (globalThis.ReactNativeWebView) cta = cta.replace(/<button class="sc-pc-cta[^"]*" data-pc="watch">[\s\S]*?<\/button>/g, '')   // no alerts in the phone app yet
+
   return `
-    ${_discountHTML(hist?.discount)}
-    ${_graphHTML(hist?.points, cur, hist?.source, _productData?.mrpPrice || 0)}
+    ${_discountHTML(d, hist?.points?.length || 0)}
+    ${v === 'not_enough_history' && (hist?.points?.length || 0) < 2 ? '' : _graphHTML(hist?.points, cur, hist?.source, _productData?.mrpPrice || 0)}
+    ${extra}${_fakeCard}
+    ${_matchesHTML(r.priceMatches, cur)}
     ${_watchHTML()}
-    ${_rHead(P.rupee,'#16A34A','rgba(22,163,74,0.1)','Price check','This price vs similar products',hasCheaper?`SAVE ₹${save.toLocaleString('en-IN')}`:'NO CHEAPER STORE','#16A34A')}
-    <div class="sc-price-vs">
-      <div class="sc-pv-side">
-        <div class="sc-pv-label">Current</div>
-        <div class="sc-pv-val">₹${cur.toLocaleString('en-IN')}</div>
-        <div class="sc-pv-plat">${r.platform || 'This site'}</div>
-      </div>
-      <div class="sc-pv-arrow">${hasCheaper ? '→' : '✓'}</div>
-      <div class="sc-pv-side"${hasCheaper && platUrl ? ` data-href="${platUrl}" style="cursor:pointer"` : ''}>
-        <div class="sc-pv-label">Best Found</div>
-        <div class="sc-pv-val best">${bestLabel}</div>
-        <div class="sc-pv-plat">${bestSub}</div>
-      </div>
-    </div>
-    ${hasCheaper ? `<div class="sc-savings-banner">Save <strong>₹${save.toLocaleString('en-IN')}</strong> on ${plat}</div>` : ''}
-    ${_aiBox(insight)}
-    ${_verdict(
-      hasCheaper
-        ? `Better price on ${plat} — save ₹${save.toLocaleString('en-IN')}`
-        : 'No cheaper store found right now',
-      hasCheaper ? 'yellow' : 'green'
-    )}
+    ${cta}
+    ${_sourcesHTML(hist)}
   `
 }
 
@@ -1143,6 +1213,54 @@ function _sellerResult(r) {
 }
 
 /* ── Alternatives ── */
+// Same product on other sites, each with its own rating + review check (backend: services/sameProduct.js)
+const _REV = {
+  mostly_real: ['green', 'Mostly real reviews'],
+  mixed:       ['amber', 'Mixed: check reviews'],
+  many_fake:   ['red',   'Many reviews look fake'],
+  too_few:     ['grey',  'Too few reviews to judge'],
+}
+function _sameProductHTML(sp) {
+  if (!sp) return ''
+  const cur = _productData?.price || 0
+  const STORE = { amazon: 'Amazon', flipkart: 'Flipkart', myntra: 'Myntra' }
+  const fmtN = n => n >= 1e5 ? (n / 1e5).toFixed(1).replace(/\.0$/, '') + 'L' : n >= 1e3 ? (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'k' : String(n)
+  const sr = _scan?.result
+  // This page, for comparison (from the main scan when it has run)
+  const here = `<div class="sc-sp-card here"><div class="sc-sp-top"><span class="sc-sp-store">${_esc(_storeName())}</span><span class="sc-pc-pill blue">YOU'RE HERE</span><span class="sc-sp-price">${cur ? _rs(cur) : '—'}</span></div>
+    <div class="sc-sp-stats"><div><b>${_productData?.rating ? `${_productData.rating}★` : '—'}</b><span>rating</span></div><div><b>${_productData?.numRatings ? fmtN(_productData.numRatings) : '—'}</b><span>ratings</span></div>
+    <div><b>${sr?.fakeReviewPercent != null ? `${sr.fakeReviewPercent}%` : '—'}</b><span>fake reviews</span></div></div>
+    ${sr?.fakeReviewPercent == null ? '<div class="sc-sp-line"><span>Open the Reviews tab to check this page\'s reviews.</span></div>' : ''}</div>`
+
+  const cards = (sp.listings || []).map(l => {
+    const R = l.reviews, [rc, rlabel] = R ? (_REV[R.verdict] || _REV.too_few) : ['grey', l.pageRead ? 'No review text on the page' : "Couldn't read this page"]
+    const d = l.diff || 0
+    const priceNote = !cur ? '' : d < 0 ? `<small style="color:#16A34A">${_rs(-d)} cheaper</small>` : d > 0 ? `<small style="color:#DC2626">${_rs(d)} more</small>` : '<small style="color:#64748B">same price</small>'
+    const bar = R ? `<div class="sc-sp-bar" aria-label="${R.realPercent}% real, ${R.unclearPercent}% unclear, ${R.fakePercent}% fake"><i style="width:${R.realPercent}%;background:#16A34A"></i><i style="width:${R.unclearPercent}%;background:#CBD5E1"></i><i style="width:${R.fakePercent}%;background:#DC2626"></i></div>
+      <div class="sc-sp-leg"><span>Real <b style="color:#15803D">${R.realPercent}%</b></span><span>Unclear ${R.unclearPercent}%</span><span>Fake <b style="color:#DC2626">${R.fakePercent}%</b></span></div>` : ''
+    return `<div class="sc-sp-card">
+      <div class="sc-sp-top"><span class="sc-sp-store">${_esc(STORE[l.platform] || l.platform)}</span>
+        <span class="sc-pc-pill ${l.otherColour ? 'amber' : l.how === 'exact' ? 'green' : 'blue'}">${l.otherColour ? 'OTHER COLOUR' : l.how === 'exact' ? 'SAME MODEL' : _esc(String(l.how).toUpperCase())}</span>
+        <span class="sc-sp-price">${_rs(l.price)}${priceNote}</span></div>
+      <div class="sc-sp-name" title="${_esc(l.name)}">${_esc(l.name)}</div>
+      <div class="sc-sp-stats"><div><b>${l.rating ? `${l.rating}★` : '—'}</b><span>rating</span></div><div><b>${l.ratingCount ? fmtN(l.ratingCount) : '—'}</b><span>ratings</span></div>
+        <div><b>${R ? R.checked : '—'}</b><span>reviews checked</span></div></div>
+      <div class="sc-sp-line" style="margin-top:10px"><span class="sc-pc-pill ${rc}">${rlabel.toUpperCase()}</span></div>
+      ${bar}
+      ${l.ratingCheck ? `<div class="sc-sp-line">${l.ratingCheck.ok ? '✓' : '⚠️'} ${_esc(l.ratingCheck.note)}</div>` : ''}
+      ${R?.liked?.length ? `<div class="sc-sp-line"><span>Buyers like:</span> ${R.liked.map(_esc).join(', ')}</div>` : ''}
+      ${R?.disliked?.length ? `<div class="sc-sp-line"><span>Complaints:</span> ${R.disliked.map(_esc).join(', ')}</div>` : ''}
+      ${l.seller ? `<div class="sc-sp-line"><span>Seller:</span> ${_esc(l.seller)}${l.fulfilled ? ' · Fulfilled by Amazon' : ''}</div>` : ''}
+      ${R?.quote ? `<div class="sc-sp-quote">"${_esc(R.quote)}"</div>` : ''}
+      <button class="sc-sp-open" data-href="${_esc(l.url)}">Open on ${_esc(STORE[l.platform] || l.platform)}<i>↗</i></button>
+    </div>`
+  }).join('')
+
+  return `<p class="sc-opt-head" style="margin:4px 2px 0">Same product on other sites</p>
+    <div class="sc-sp">${here}${cards || `<div class="sc-sp-card"><div class="sc-sp-line"><span>${_esc(sp.note || 'Not found on other sites.')}</span></div></div>`}</div>
+    <p class="sc-store-note">ScanCart checks Amazon for the exact same product (same storage, size and colour) and reads each listing's own rating and reviews. Review labels are rule-based estimates, not proof. Flipkart and Myntra block these checks, so use the store list below to search there.</p>`
+}
+
 function _storesHTML() {
   const stores = whereToBuy({ ..._productData, platform: _productData?.platform })
   if (!stores.length) return ''
@@ -1266,6 +1384,7 @@ function _altResult(r) {
         ? (bestSave > 0 ? `SAVE ₹${bestSave.toLocaleString('en-IN')}` : `${realAlts.length} FOUND`)
         : alts.length > 0 ? 'EXPLORE' : 'NONE FOUND',
       '#CA8A04')}
+    ${_sameProductHTML(r.sameProduct)}
     ${_storesHTML()}
     <p class="sc-opt-head" style="margin:6px 2px 0">Similar products${r.altFailed ? ' — search didn’t finish, try again later' : ''}</p>
     <div class="sc-alt-grid" id="sc-alt-grid">${cardsHTML}</div>
@@ -1358,17 +1477,69 @@ function _togglePanel() { _shadowRoot?.getElementById('sc-panel')?.classList.con
 ═══════════════════════════════════════════════ */
 const _rs = (n) => '₹' + Math.round(n).toLocaleString('en-IN')
 
-function _discountHTML(d) {
+// Figma frames 02–06: first scan · Good deal · Fair price · Wait · Fake discount
+const _PC = {
+  good_deal:          ['green', 'GOOD DEAL',     '✅'],
+  fair:               ['blue',  'FAIR PRICE',    '👌'],
+  wait:               ['amber', 'WAIT',          '⏳'],
+  fake_discount:      ['red',   'FAKE DISCOUNT', '🚩'],
+  not_enough_history: ['grey',  'JUST STARTED',  '📈'],
+}
+const _FROM_STATUS = { fake_sale: 'fake_discount', new_low: 'good_deal', usual: 'fair', above_usual: 'wait' }
+let _fakeCard = ''
+function _discountHTML(d, readings = 0) {
+  _fakeCard = ''
   if (!d) return ''
-  const map = {
-    fake_sale:          ['red',    'Sale looks fake'],
-    new_low:            ['green',  'Real deal: lowest price seen'],
-    usual:              ['yellow', 'Usual price'],
-    above_usual:        ['yellow', 'Higher than usual'],
-    not_enough_history: ['yellow', 'Price history is just starting'],
+  const v = d.verdict || _FROM_STATUS[d.status] || 'not_enough_history'
+  const [cls, pill, emoji] = _PC[v] || _PC.not_enough_history
+  const title = d.title || ({ good_deal: 'Real deal: lowest price seen', fair: 'Usual price', wait: 'Higher than usual', fake_discount: 'Sale looks fake' }[v] || 'Price history is just starting')
+  let extra = ''
+  if (v === 'fake_discount' && d.claimedDiscountPercent != null) {
+    _fakeCard = `<div class="sc-pc sc-pc-real" style="margin-top:0;border-top:1px solid #E2E8F0;padding-top:14px"><div class="sc-pc-k" style="display:flex">What the discount really is</div>
+      <div><span>Store says</span><s style="color:#94A3B8">${d.claimedDiscountPercent}% off</s></div>
+      <div><b>Real saving</b><b style="color:#DC2626">${d.realSavingPercent || 0}% · ${_rs(d.realSavingAmount || 0)}</b></div>
+      <div class="sc-pc-bar"><span style="width:${Math.max(2, Math.min(100, d.realSavingPercent || 0))}%"></span></div></div>`
   }
-  const [lvl, head] = map[d.status] || ['yellow', 'Price check']
-  return _verdict(`<b>${head}.</b> <span style="font-weight:500">${d.message}</span>`, lvl)
+  if (v === 'not_enough_history') {
+    const n = Math.max(1, Math.min(14, readings || d.readings || 1))
+    extra = `<div class="sc-pc-reads" aria-label="${n} of 14 price readings">${Array.from({ length: 14 }, (_, i) => `<span class="${i < n ? 'on' : ''}"></span>`).join('')}</div>
+      <div class="sc-pc-note">${n} price reading${n > 1 ? 's' : ''} so far · a verdict needs 3 over 2+ days. Watched products are re-checked every 6 hours.</div>`
+  }
+  return `<div class="sc-pc ${cls}"><div class="sc-pc-top"><span class="sc-pc-emoji">${emoji}</span><div><span class="sc-pc-pill ${cls}">${pill}</span><div class="sc-pc-title">${_esc(title)}</div></div></div>
+    <p class="sc-pc-msg">${_esc(d.message || '')}</p>${extra}</div>`
+}
+
+// Figma frame 07: same product on other stores, and what was left out (variant rules)
+function _matchesHTML(m, cur) {
+  if (!m || (!m.matched?.length && !m.excluded?.length)) return ''
+  const STORE = { amazon: 'Amazon', flipkart: 'Flipkart', myntra: 'Myntra' }
+  const row = (a) => `<div class="sc-pc-row"${a.url ? ` data-href="${_esc(a.url)}" style="cursor:pointer"` : ''}>`
+  const ok = (m.matched || []).map(a => `${row(a)}<span class="nm" title="${_esc(a.name)}">${_esc(STORE[a.platform] || a.platform)}</span>
+      <span class="sc-pc-pill ${a.how === 'exact' ? 'green' : 'blue'}">${a.how === 'exact' ? 'Same model' : _esc(a.how)}</span>
+      <span class="pr" style="color:${a.price < cur ? '#16A34A' : '#0F172A'}">${_rs(a.price)}</span></div>`).join('')
+  const out = (m.excluded || []).map(a => `${row(a)}<span class="sc-pc-x">✕</span><div style="min-width:0;flex:1"><div class="nm" title="${_esc(a.name)}">${_esc(a.name)}</div><div class="why">${_esc(a.reason)}</div></div>
+      <span class="pr" style="color:#94A3B8;font-weight:600">${_rs(a.price)}</span></div>`).join('')
+  return `${ok ? `<div class="sc-pc"><div class="sc-pc-k">Same product elsewhere <b class="sc-pc-pill green">${m.matched.length} matched</b></div>${ok}</div>` : ''}
+    ${out ? `<div class="sc-pc"><div class="sc-pc-k">Not the same, left out <b class="sc-pc-pill grey">${m.excluded.length}</b></div>${out}
+      <p class="sc-pc-note">ScanCart only compares when brand, model, storage, size, quantity and colour all match.</p></div>` : ''}`
+}
+
+// Figma frames 01 + 08: where these prices come from + what ScanCart read from this page
+function _sourcesHTML(hist) {
+  const d = _productData || {}, ids = d.productIds || {}
+  const read = [['Store ID', ids.storeId], ['Barcode (GTIN)', ids.gtin], ['Model', ids.model], ['Variant', [ids.color, ids.size].filter(Boolean).join(' · ')],
+    ['Price now', d.price ? _rs(d.price) : null], ['MRP shown', d.mrpPrice > d.price ? _rs(d.mrpPrice) : null], ['Seller', typeof d.seller === 'string' ? d.seller : d.seller?.name]]
+    .filter(([, val]) => val)
+  const n = hist?.points?.length || 0, shared = hist?.source === 'shared'
+  const src = (ic, t, desc, count, cls, id = '') => `<div class="sc-pc-src"><span class="ic">${ic}</span><div><div class="t">${t}</div><div class="d">${desc}</div></div><span class="sc-pc-pill ${cls}"${id ? ` id="${id}"` : ''}>${count}</span></div>`
+  return `<div class="sc-pc"><details><summary class="sc-pc-k">Where these prices come from <b style="color:#2563EB">Show</b></summary>
+    ${src('👤', shared ? 'ScanCart users' : `This ${globalThis.ReactNativeWebView ? 'phone' : 'browser'}`, 'Saved each time this product is opened', n, 'blue')}
+    ${src('↻', 'Re-check', 'Every 6 hours for products you watch', _lastWatch ? 'On' : 'Off', _lastWatch ? 'green' : 'grey', 'sc-pc-recheck')}
+    ${src('🔎', 'Shopping search', 'Prices on other stores, same product only', '—', 'grey')}
+    <div class="sc-pc-k" style="margin-top:14px">Read from this page <b class="sc-pc-pill ${d.sources?.jsonLd ? 'blue' : 'grey'}">${d.sources?.jsonLd ? 'Page data (JSON-LD)' : 'Page layout'}</b></div>
+    <div style="margin-top:4px">${read.map(([k, val]) => `<div class="sc-pc-chk"><span class="sc-pc-dot" style="background:${k === 'MRP shown' ? '#F59E0B' : '#16A34A'}">${k === 'MRP shown' ? '!' : '✓'}</span>${k}<b>${_esc(String(val).slice(0, 40))}</b></div>`).join('')}</div>
+    <p class="sc-pc-note">We use the store's own product data and prices seen by users. These IDs are how ScanCart finds the same product on other stores.</p>
+  </details></div>`
 }
 
 // Price graph, dashboard style: stat row, range pills (7 / 14 / 30 / 90 days), grid with a day axis,
@@ -1384,14 +1555,16 @@ function _dailySeries(points) {
   const start = new Date(pts[0].t); start.setHours(0, 0, 0, 0)
   const end = new Date(); end.setHours(0, 0, 0, 0)
   const byDay = new Map()
-  pts.forEach(p => { const d = new Date(p.t); d.setHours(0, 0, 0, 0); byDay.set(+d, p.price) })
-  const out = []; let last = null, low = Infinity
+  const mrpDay = new Map()
+  pts.forEach(p => { const d = new Date(p.t); d.setHours(0, 0, 0, 0); byDay.set(+d, p.price); if (p.mrp > 0) mrpDay.set(+d, p.mrp) })
+  const out = []; let last = null, low = Infinity, lastMrp = null
   for (let t = +start; t <= +end; t += 86400e3) {
     const seen = byDay.has(t)
     if (seen) last = byDay.get(t)
     if (last == null) continue
     low = Math.min(low, last)
-    out.push({ t, price: last, low, seen })
+    if (mrpDay.has(t)) lastMrp = mrpDay.get(t)
+    out.push({ t, price: last, low, seen, mrp: lastMrp })
   }
   return out
 }
@@ -1411,7 +1584,8 @@ function _graphInner() {
   const since = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return +d - (range - 1) * 86400e3 })()
   const S = all.filter(p => p.t >= since)
   const prices = S.map(p => p.price)
-  const lo = Math.min(...prices, cur), hi = Math.max(...prices, cur)
+  const showMrp = _lastVerdict?.verdict === 'fake_discount' && S.some(p => p.mrp > 0)
+  const lo = Math.min(...prices, cur), hi = Math.max(...prices, cur, ...(showMrp ? S.map(p => p.mrp || 0) : []))
   const avg = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length)
   const vsAvg = avg ? Math.round((cur - avg) / avg * 100) : 0
   const lowDay = S.find(p => p.price === lo)
@@ -1436,20 +1610,18 @@ function _graphInner() {
     ${yt.map(v => `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="#E2E8F0"/><text x="${L - 8}" y="${y(v) + 3.5}" text-anchor="end" font-size="10" fill="#94A3B8">${fmt(v)}</text>`).join('')}
     ${xt.map(t => `<line x1="${x(t)}" x2="${x(t)}" y1="${T}" y2="${H - B}" stroke="#E2E8F0" stroke-dasharray="3 3"/><text x="${x(t)}" y="${H - 7}" text-anchor="middle" font-size="10" fill="#94A3B8">${new Date(t).getDate()}</text>`).join('')}
     <path d="${line('price')} L${x(S[S.length - 1].t)} ${H - B} L${x(S[0].t)} ${H - B} Z" fill="${_BLUE}" fill-opacity="0.07"/>
-    <path d="${line('low')}" fill="none" stroke="${_INK}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    ${showMrp ? (() => { const M = S.filter(p => p.mrp > 0); const up = M.find((p, i) => i && p.mrp >= M[0].mrp * 1.1); return `<path d="${M.map((p, i) => `${i ? 'L' : 'M'}${x(p.t).toFixed(1)} ${y(p.mrp).toFixed(1)}`).join(' ')}" fill="none" stroke="#DC2626" stroke-width="1.8" stroke-dasharray="5 4"/>` + (up ? `<circle cx="${x(up.t).toFixed(1)}" cy="${y(up.mrp).toFixed(1)}" r="4" fill="#DC2626"/><text x="${Math.max(L + 50, Math.min(W - R - 50, x(up.t))).toFixed(1)}" y="${(y(up.mrp) - 8).toFixed(1)}" text-anchor="middle" font-size="9.5" font-weight="800" fill="#DC2626">MRP raised to ${_rs(up.mrp)}</text>` : '') })() : ''}
     <path d="${line('price')}" fill="none" stroke="${_BLUE}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+    ${lowDay && !showMrp ? `<circle cx="${x(lowDay.t).toFixed(1)}" cy="${y(lo).toFixed(1)}" r="4" fill="#16A34A"/><text x="${Math.min(W - R, Math.max(L + 30, x(lowDay.t))).toFixed(1)}" y="${(y(lo) + 15 > H - B ? y(lo) - 8 : y(lo) + 15).toFixed(1)}" text-anchor="middle" font-size="9.5" font-weight="800" fill="#15803D" paint-order="stroke" stroke="#fff" stroke-width="3">Lowest ${_rs(lo)}</text>` : ''}
     ${S.filter(p => p.seen).map(p => `<circle cx="${x(p.t).toFixed(1)}" cy="${y(p.price).toFixed(1)}" r="2.6" fill="#fff" stroke="${_BLUE}" stroke-width="1.6"/>`).join('')}
     <g class="sc-g-hover" style="display:none"><line y1="${T}" y2="${H - B}" stroke="${_INK}" stroke-width="1.2"/><rect class="sc-g-dp" width="6" height="6" fill="#fff" stroke="${_BLUE}" stroke-width="1.5"/><rect class="sc-g-dl" width="6" height="6" fill="#fff" stroke="${_INK}" stroke-width="1.5"/><text class="sc-g-dx" text-anchor="middle" font-size="10" font-weight="800" fill="${_INK}" y="${H - 7}"></text></g>
     <rect class="sc-g-hit" x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/>
   </svg>`
   return `
-    <div class="sc-g-head"><div class="sc-g-title">Price history</div><div class="sc-g-pills">${pill}</div></div>
-    <div class="sc-g-stats">
-      <div><div class="sc-g-k">Today <i style="background:${_BLUE}"></i></div><div class="sc-g-v">${_rs(cur)} <span class="${vsAvg <= 0 ? 'dn' : 'up'}">${arrow} ${Math.abs(vsAvg)}% vs avg</span></div></div>
-      <div><div class="sc-g-k">Lowest <i style="background:${_INK}"></i></div><div class="sc-g-v">${_rs(lo)} <span class="mute">${lowDay ? _day(lowDay.t) : ''}</span></div></div>
-    </div>
+    <div class="sc-g-head"><div class="sc-pc-k">Price, last ${range} days</div><div class="sc-g-pills">${pill}</div></div>
     <div class="sc-g-wrap">${svg}<div class="sc-g-tip" style="display:none"></div></div>
-    <div class="sc-rc-sub" style="margin-top:2px">High ${_rs(hi)} · Average ${_rs(avg)}${mrp > cur ? ` · MRP ${_rs(mrp)}` : ''} · ${from}${all.length < 3 ? ' · fills in as you visit on more days' : ''}</div>`
+    <div class="sc-g3">${(_gStats || [[_rs(lo), 'Lowest'], [_rs(avg), 'Average'], [_rs(hi), 'Highest']]).map(([val, k]) => `<div><b>${val}</b><span>${k}</span></div>`).join('')}</div>
+    <div class="sc-rc-sub" style="margin-top:6px;text-align:center">${mrp > cur ? `MRP ${_rs(mrp)} · ` : ''}${from}${all.length < 3 ? ' · fills in as you visit on more days' : ''}</div>`
 }
 
 function _setupGraph(cnt) {
@@ -1511,8 +1683,8 @@ function _watchHTML() {
   if (globalThis.ReactNativeWebView) return ''
   const cur = _productData?.price || 0
   if (!cur) return ''
-  const suggest = Math.round(cur * 0.9)
-  return `<div class="sc-watch" id="sc-watch">
+  const suggest = _lastVerdict?.verdict === 'wait' && _lastVerdict.wasPrice < cur ? _lastVerdict.wasPrice : Math.round(cur * 0.9)
+  return `<div class="sc-watch hide" id="sc-watch">
     <div class="sc-graph-k">Watch this price</div>
     <div class="sc-watch-row" id="sc-watch-form">
       <input id="sc-watch-target" type="number" min="1" inputmode="numeric" placeholder="Alert me at (optional)" value="${suggest}">
@@ -1520,6 +1692,21 @@ function _watchHTML() {
     </div>
     <p class="sc-watch-note" id="sc-watch-note">ScanCart checks this page every 6 hours and sends a ${globalThis.App?.notify ? "phone" : "Chrome"} notification when the price drops or reaches your target.</p>
   </div>`
+}
+
+function _setupPriceCtas(cnt) {
+  cnt.querySelectorAll('[data-pc]').forEach(b => b.addEventListener('click', async e => {
+    e.stopPropagation()
+    const k = b.dataset.pc
+    if (k === 'close') return _hidePanel()
+    if (k === 'alts') return _handleOption('alternatives')
+    const box = _shadowRoot.getElementById('sc-watch'); if (!box) return
+    box.classList.remove('hide')
+    // Wait: one tap = alert at the earlier low; otherwise show the target box
+    if (_lastVerdict?.verdict === 'wait' && b.classList.contains('purple')) { _shadowRoot.getElementById('sc-watch-add')?.click() }
+    else box.querySelector('input')?.focus()
+    cnt.querySelectorAll('[data-pc="watch"]').forEach(x => x.remove())
+  }))
 }
 
 async function _setupWatch() {
@@ -1538,13 +1725,16 @@ async function _setupWatch() {
     })
   }
   const existing = await findWatch(url).catch(() => null)
-  if (existing) return show(existing)
+  _lastWatch = Boolean(existing)
+  const rc = _shadowRoot.getElementById('sc-pc-recheck'); if (rc) { rc.textContent = existing ? 'On' : 'Off'; rc.className = `sc-pc-pill ${existing ? 'green' : 'grey'}` }
+  if (existing) { box.classList.remove('hide'); _shadowRoot.querySelectorAll('[data-pc="watch"]').forEach(b => b.remove()); return show(existing) }
   _shadowRoot.getElementById('sc-watch-add')?.addEventListener('click', async (e) => {
     e.stopPropagation()
     const target = Number(_shadowRoot.getElementById('sc-watch-target')?.value) || 0
     const btn = e.currentTarget; btn.disabled = true; btn.textContent = 'Saving…'
     try {
       show(await addWatch({ url, productName: _productData?.productName, platform: _productData?.platform, price: _productData?.price, image: _productData?.image }, target))
+      const rc = _shadowRoot.getElementById('sc-pc-recheck'); if (rc) { rc.textContent = 'On'; rc.className = 'sc-pc-pill green' }
       try { globalThis.App?.watchesChanged?.() } catch {}   // Android app: start its 6-hourly price check
     } catch { btn.disabled = false; btn.textContent = 'Try again' }
   })

@@ -9,6 +9,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import admin from 'firebase-admin'
 import { getDb } from './firebase.js'
+import { priceVerdict } from '../utils/priceVerdict.js'
 
 const DAY = 864e5
 const DEDUPE_MS = 6 * 3600e3          // same price from the same listing within 6 h = one point
@@ -116,24 +117,9 @@ export function summarise(points, { excludeLatest = false } = {}) {
   }
 }
 
-/**
- * Is today's discount real? Compares the page's "was" price (MRP) and today's price
- * with what ScanCart itself saw before. Needs at least 3 earlier points over 2+ days.
- */
+/** Is today's price good? Same rules as the extension: see utils/priceVerdict.js */
 export function discountVerdict(points, { price, mrp }) {
-  const before = summarise(points.filter(p => p.price > 0 && p.t < Date.now() - 60e3), {})
-  if (!before || before.count < 3 || before.daysTracked < 2) {
-    return { status: 'not_enough_history', message: 'ScanCart has not seen this listing often enough yet to judge the discount.', history: before }
-  }
-  const claimed = Number(mrp) > price ? Math.round((mrp - price) / mrp * 100) : null
-  const vsLow = Math.round((before.low - price) / before.low * 100)        // + = cheaper than our low
-  const vsAvg = Math.round((before.avg - price) / before.avg * 100)
-  let status, message
-  if (price < before.low) { status = 'new_low'; message = `Lowest price ScanCart has seen in ${before.daysTracked} days (earlier low ₹${before.low.toLocaleString('en-IN')}).` }
-  else if (claimed != null && claimed >= 20 && vsAvg < 5) { status = 'fake_sale'; message = `Shows ${claimed}% off, but this listing has sold near ₹${before.avg.toLocaleString('en-IN')} for ${before.daysTracked} days — the sale price is not really lower.` }
-  else if (price > before.avg * 1.05) { status = 'above_usual'; message = `Higher than usual: it averaged ₹${before.avg.toLocaleString('en-IN')} over ${before.daysTracked} days.` }
-  else { status = 'usual'; message = `About the usual price (₹${before.low.toLocaleString('en-IN')}–₹${before.high.toLocaleString('en-IN')} over ${before.daysTracked} days).` }
-  return { status, message, claimedDiscountPercent: claimed, vsLowPercent: vsLow, vsAvgPercent: vsAvg, history: before }
+  return priceVerdict(points, { price, mrp })
 }
 
 // ── Price watches ────────────────────────────────────────────────────────

@@ -49,6 +49,12 @@ export function productFromJsonLd(blobs) {
         numRatings: Math.round(num(agg.ratingCount) || num(agg.reviewCount)),
         numReviews: Math.round(num(agg.reviewCount)),
         sku: n.sku || n.mpn || n.gtin13 || null,
+        // IDs used to find the SAME product on other stores (Price check → Match)
+        gtin: String(n.gtin13 || n.gtin || n.gtin14 || n.gtin12 || n.gtin8 || '') || null,
+        mpn: n.mpn || null,
+        model: typeof n.model === 'string' ? n.model : n.model?.name || null,
+        color: typeof n.color === 'string' ? n.color : null,
+        size: typeof n.size === 'string' ? n.size : n.size?.name || null,
         reviewDates: reviews.map(r => r?.datePublished).filter(Boolean),
         reviewTexts: reviews.map(r => (typeof r?.reviewBody === 'string' ? r.reviewBody.trim() : '')).filter(t => t.length >= 20).slice(0, 8),
       }
