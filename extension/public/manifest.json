@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ScanCart.ai - AI Product Authenticity",
-  "version": "1.3.1",
+  "version": "1.7.0",
   "description": "Check a product before you buy: Trust Score, fake-review and fake-sale checks, price history and price-drop alerts.",
   "permissions": [
     "activeTab",
@@ -12,6 +12,8 @@
     "notifications"
   ],
   "host_permissions": [
+    "http://*/*",
+    "https://*/*",
     "https://*.amazon.in/*",
     "https://*.amazon.com/*",
     "https://*.flipkart.com/*",
@@ -45,23 +47,20 @@
   "content_scripts": [
     {
       "matches": [
-        "https://*.amazon.in/*",
-        "https://*.amazon.com/*",
-        "https://*.flipkart.com/*",
-        "https://*.myntra.com/*",
-        "https://*.nykaa.com/*",
-        "https://*.meesho.com/*",
-        "http://localhost:5173/*",
-        "https://scancart.ai/*",
-        "https://scancartdemo.netlify.app/*",
-        "https://scancart-ai.vercel.app/*"
+        "https://*/*",
+        "http://*/*"
       ],
       "js": [
         "src/content/content.js"
       ],
       "css": [
         "src/content/styles.css"
-      ]
+      ],
+      "exclude_matches": [
+        "https://accounts.google.com/*",
+        "https://*.google.com/recaptcha/*"
+      ],
+      "all_frames": false
     }
   ],
   "web_accessible_resources": [

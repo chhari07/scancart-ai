@@ -307,3 +307,11 @@ button.sc-opt:hover { background: var(--slate-50); }
 
 /* The popup's main screen is the on-page panel drawn inline (PanelView) */
 .sc-panel-host { display: block; width: 100%; }
+
+/* Language switch: EN · हि · Hinglish */
+.sc-lang { display: inline-flex; border: 1px solid var(--slate-200); border-radius: 999px; padding: 2px; background: var(--slate-100); }
+.sc-lang button { border: 0; background: transparent; font: inherit; font-size: 10.5px; font-weight: 800; color: var(--slate-500); padding: 3px 7px; border-radius: 999px; cursor: pointer; }
+.sc-lang button.on { background: #0F172A; color: #fff; }
+html[lang="hi"] body { font-family: 'Inter', 'Noto Sans Devanagari', 'Nirmala UI', 'Mangal', -apple-system, 'Segoe UI', sans-serif; }
+
+.sc-header button, .sc-header .sc-pill, .sc-header span { white-space: nowrap; }

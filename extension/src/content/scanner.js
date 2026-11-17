@@ -4,6 +4,8 @@
 
 import { detectPlatform, isProductPage, SELECTORS } from '../utils/selectors'
 import { readPageJsonLd } from '../utils/jsonld'
+import { readReviewCards } from './reviewCollector'
+import { readGeneric } from './genericReader'
 
 export class ProductScanner {
   constructor() {
@@ -14,7 +16,14 @@ export class ProductScanner {
 
   init() {
     this.platform = detectPlatform()
-    if (!this.platform || !isProductPage()) return false
+    this.generic = false
+    if (!this.platform || !isProductPage()) {
+      // Any other shop: a product if the page publishes product data (or shows title + ₹ price + Buy button)
+      const g = readGeneric(this)
+      if (g.notProduct) return false
+      this.platform = g.platform
+      this.generic = true
+    }
     this.scan()
     this.watchNavigation()
     return true
@@ -36,7 +45,14 @@ export class ProductScanner {
   extract() {
     try {
       const sel = SELECTORS[this.platform]
-      if (!sel) return null
+      if (this.generic || !sel) {
+        const g = readGeneric(this)
+        if (g.notProduct) return null
+        // reviews shown on the page, read with the any-shop review reader
+        const cards = readReviewCards(document, g.platform).map(r => r.text)
+        if (cards.length > (g.reviewTexts?.length || 0)) g.reviewTexts = cards.slice(0, 60)
+        return g
+      }
 
       // schema.org JSON-LD first where it is reliable; CSS selectors fill the gaps.
       // Amazon rarely publishes an offer price in JSON-LD, and its price block is well tuned,
@@ -51,7 +67,10 @@ export class ProductScanner {
       const numReviews  = this.parseCount(sel.numReviews) || ld?.numReviews || 0
       const seller            = this.parseSeller(sel.seller)
       const sellerProfilePath = this.attr(sel.sellerLink, 'href')
-      const domReviews        = this.extractReviews(sel.reviewTexts)
+      // Review cards first (newer layouts), the older text selectors as a fallback: whichever finds more
+      const oldReviews        = this.extractReviews(sel.reviewTexts)
+      const cardReviews       = readReviewCards(document, this.platform).map(r => r.text).slice(0, 60)
+      const domReviews        = cardReviews.length > oldReviews.length ? cardReviews : oldReviews
       const reviewTexts       = domReviews.length ? domReviews : (ld?.reviewTexts || [])
       // Keep repeats: several reviews on the same day is exactly what the burst check looks for
       const domDates          = this.extractDates(sel.reviewDates)
@@ -310,7 +329,7 @@ export class ProductScanner {
     this.observer = new MutationObserver(() => {
       if (location.href !== oldUrl) {
         oldUrl = location.href
-        this.platform = detectPlatform()
+        this.platform = detectPlatform() || (this.generic ? this.platform : null)
         setTimeout(() => this.scan(), 1200)
       }
     })
@@ -339,6 +358,13 @@ export { isProductPage }
 
 export function quickExtract() {
   const s = getScanner()
-  s.platform = detectPlatform()
+  const big = detectPlatform()
+  if (big) { s.platform = big; s.generic = false }
   return s.extract()
+}
+
+/** True when this page shows a product: a big store's product page, or any shop's product. */
+export function looksLikeProduct() {
+  if (isProductPage()) return true
+  try { return !readGeneric(null).notProduct } catch { return false }
 }

@@ -1,7 +1,7 @@
 // backend/utils/reviewClassifier.js
 // Sorts the review texts shown on the product page into "looks real" and "looks fake".
 // Rules only (no AI): every "fake" label carries the reason, so the user can judge it.
-// It only sees the reviews the page shows (usually the top 8–10), and says so.
+// It sees the reviews the extension collected (product page + up to 5 review pages, max 60).
 
 const GENERIC = /^(very\s+)?(good|nice|best|super|awesome|excellent|great|wow|amazing|perfect|ok(ay)?|fine|value for money|worth (it|buying)|love (it|this)|nice product|good product|best product|superb)[\s.!🙂👍❤️🔥⭐]*$/i
 const HYPE    = /\b(best|awesome|amazing|excellent|superb|perfect|fantastic|outstanding|must buy|100%|wonderful|mind ?blowing)\b/gi
@@ -27,7 +27,7 @@ export function classifyReviews(texts = []) {
   const list = (Array.isArray(texts) ? texts : [])
     .map(t => String(t || '').replace(/\s+/g, ' ').trim())
     .filter(t => t.length > 0)
-    .slice(0, 30)
+    .slice(0, 60)
   const sets = list.map(words)
   const out = { checked: list.length, real: [], fake: [], unclear: [] }
 

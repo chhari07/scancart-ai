@@ -17,10 +17,10 @@ export function NotProductView() {
       </div>
       <div className="sc-center">
         <div className="sc-h2">Open a product to scan it</div>
-        <p className="sc-small sc-muted" style={{ marginTop: 6 }}>ScanCart works on product pages of these stores:</p>
+        <p className="sc-small sc-muted" style={{ marginTop: 6 }}>ScanCart works on any online shop's product page, for example:</p>
       </div>
       <div className="sc-store-pills">
-        {STORES.map(([name, c]) => (
+        {[...STORES, ['Any other shop', '#16A34A']].map(([name, c]) => (
           <span key={name} className="sc-pill line">
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: c }} /> {name}
           </span>
@@ -28,7 +28,7 @@ export function NotProductView() {
       </div>
       <div className="sc-note yellow" style={{ marginTop: 8 }}>
         <Lightbulb size={16} color="#CA8A04" style={{ flexShrink: 0, marginTop: 1 }} />
-        <div><b>Tip</b><br />On a product page, look for the blue ScanCart button to scan in one tap.</div>
+        <div><b>Tip</b><br />On a product page of any shop, look for the blue ScanCart button to scan in one tap. Just opened the page? Reload it once.</div>
       </div>
     </>
   )

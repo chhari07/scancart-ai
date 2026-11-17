@@ -4,6 +4,15 @@
 import { analyzeProduct, fetchAlternatives } from '../services/aiAnalysis'
 import { addWatch, findWatch, removeWatch } from '../services/priceWatch'
 import { whereToBuy } from '../utils/stores'
+import { collectReviews, readStoreInsights, setDeepReviews } from './reviewCollector'
+import { SELECTORS, detectPlatform } from '../utils/selectors'
+import { quickExtract } from './scanner'
+import { storeKey } from './genericReader'
+import { getTheme, getThemeSetting, setThemeSetting, onThemeChange, darkenCss, DARK_INLINE } from '../utils/theme'
+import { LANGS, getLang, setLang, onLangChange, attachTranslator, translateTree } from '../utils/i18n'
+import { getLocalPoints, localInfo, pickHistory } from '../services/localPriceHistory'
+import { classifyReviews } from '../../../backend/utils/reviewClassifier.js'
+import { detectCategory, tagAspects } from '../../../backend/utils/reviewAspects.js'
 
 const HOST_ID = 'scancart-host'
 
@@ -18,6 +27,7 @@ let _pageUrl     = null   // set when the panel runs inside the toolbar popup (n
 let _lastReview  = null   // last scan result shown in the Reviews view (for the aspect detail screen)
 let _scan        = null   // { url, result } full scan of this page — every tab reuses it (no re-scan)
 let _alts        = null   // { url, result } where-to-buy lookup of this page
+let _gathered    = null   // { url, meta } reviews collected for this page (product page + review pages + "Customers say")
 const _url = () => _pageUrl || window.location.href
 
 // What the page knows right now — the toolbar popup reads this (one source of truth)
@@ -40,7 +50,38 @@ function _renderStrip() {
   const sub = st.full != null
     ? `${r?.checksCompleted ?? 6} of ${r?.checksTotal ?? 6} checks completed`
     : 'Quick check from page data · pick a check below'
-  el.innerHTML = `<div class="sc-sstrip"><span class="sc-spill" style="background:${col}">${score} · ${fakeSale ? 'Sale looks fake' : words}</span><span class="sc-ssub">${sub}</span></div>`
+  el.innerHTML = `<div class="sc-sstrip"><span class="sc-spill" style="background:${col}">${score} · ${fakeSale ? 'Sale looks fake' : words}</span><span class="sc-ssub">${sub}</span>${r ? `<button class="sc-share" id="sc-share" title="Share this result">${_ic(_SHARE, 13, 'currentColor')} Share</button>` : ''}</div>`
+  el.querySelector('#sc-share')?.addEventListener('click', e => { e.stopPropagation(); _share(e.currentTarget) })
+}
+
+// Share a result: the phone app's share menu (WhatsApp etc.), the browser's share sheet, or copy
+const _SHARE = `<path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7M16 6l-4-4-4 4M12 2v13"/>`
+function _shareText() {
+  const r = _scan?.url === _url() ? _scan.result : {}
+  const score = _full ?? r.trustScore
+  const words = typeof score === 'number' ? _fabTone(score)[1] : ''
+  const d = _productData || {}
+  const lines = [`ScanCart ${score} · ${words}`, `${d.productName || r.productName || 'Product'}${d.price ? ` · ₹${Math.round(d.price).toLocaleString('en-IN')}` : ''}`]
+  const pts = (_priceInfo?.points || []).filter(p => p.price > 0)
+  if (pts.length > 1) {
+    const lo = pts.reduce((a, b) => b.price < a.price ? b : a)
+    lines.push(`Lowest seen ₹${Math.round(lo.price).toLocaleString('en-IN')} on ${new Date(lo.t).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`)
+  }
+  const topics = (r.reviewAspects?.aspects || []).filter(a => a.strength !== 'hidden' && a.mentions >= 3)
+  if (topics.length) lines.push('Buyers say: ' + topics.slice(0, 4).map(a => `${a.label.replace(/\?$/, '')} ${a.pos >= a.neg ? 'good' : 'bad'} (${a.pos}/${a.mentions})`).join(', '))
+  if (r.fakeReviewPercent != null) lines.push(`About ${r.fakeReviewPercent}% of ratings look suspicious`)
+  lines.push(_url(), '— checked with ScanCart.ai')
+  return lines.join('\n')
+}
+async function _share(btn) {
+  const text = _shareText()
+  try {
+    if (window.ReactNativeWebView) { window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'share', text })); return }
+    if (window.App && window.App.share) { window.App.share(text); return }   // Android app: share menu (WhatsApp …)
+    if (navigator.share && /Mobi|Android|iPhone/i.test(navigator.userAgent)) { await navigator.share({ text }); return }
+    await navigator.clipboard.writeText(text)
+    const old = btn.innerHTML; btn.textContent = '✓ Copied'; setTimeout(() => { btn.innerHTML = old }, 1600)
+  } catch {}
 }
 function _announce() {
   _renderStrip()
@@ -52,19 +93,24 @@ function _announce() {
  * The popup passes what the page's script read: product, page URL, tab id and the page's score.
  */
 export function mountInline(container, { product = null, url = null, tabId = null, status = null, mobile = false } = {}) {
+  // A new open = a fresh check (never the last product's or last time's results)
+  _scan = null; _alts = null; _gathered = null; _lastReview = null; _priceInfo = null
   _productData = product
   _pageUrl = url
   _tabId = tabId
   _quick = status?.quick ? { trustScore: status.quick.trustScore, discount: status.quick.discount ? { status: status.quick.discount } : null } : null
   _full = typeof status?.full === 'number' ? status.full : null
   _shadowRoot = container.shadowRoot || container.attachShadow({ mode: 'open' })
-  _shadowRoot.innerHTML = `<style>${_CSS}</style>${_buildHTML(product)}`
+  _shadowRoot.innerHTML = `<style>${_CSS}</style><style id="sc-theme-css"></style>${_buildHTML(product)}`
   _shadowRoot.getElementById('sc-fab')?.remove()
   _shadowRoot.getElementById('sc-backdrop')?.remove()
   _shadowRoot.getElementById('sc-panel').classList.add('sc-inline')
   if (mobile) _shadowRoot.getElementById('sc-panel').classList.add('sc-mobile')   // Android app: Figma phone layout
   _setupOptions()
   _renderStrip()
+  _setupTheme()
+  _setupLang()
+  if (url && product?.price) getLocalPoints(url).then(pts => { if (pts.length) _priceInfo = localInfo(pts, { price: product.price, mrp: product.mrpPrice || 0 }) }).catch(() => {})
   return {
     setStatus(st) {
       if (st?.quick) _quick = { trustScore: st.quick.trustScore, discount: st.quick.discount ? { status: st.quick.discount } : null }
@@ -120,6 +166,73 @@ const P = {
   alert:   `<path d="m21.73 18-8-14a2 2 0 00-3.46 0l-8 14A2 2 0 004 21h16a2 2 0 001.73-3"/><path d="M12 9v4M12 17h.01"/>`,
 }
 
+/* ── Light / dark (one setting for the page panel, the toolbar popup and the phone apps) ── */
+let _darkCss = null
+// Dark-only touches the colour swap can't do by itself
+const _DARK_EXTRA = `
+.sc-ph-logo img{filter:invert(1) hue-rotate(180deg) brightness(1.2)}
+.sc-watch input{background:#000;color:#F5F5F5;border-color:#333}
+.sc-watch input::placeholder{color:#8A8A8A}
+.sc-watch-btn{background:#2F6BFF}
+.sc-g-tip{border:1px solid #333}
+.sc-lang{background:#0D0D0D;border-color:#262626}
+.sc-lang button{color:#A3A3A3}.sc-lang button.on{background:#F5F5F5;color:#000}
+[style*="background:#0F172A"]{background:#F5F5F5!important}
+#sc-panel{color-scheme:dark}
+`
+let _theme = 'light'
+const _SUN  = `<path d="M12 3v2M12 19v2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M3 12h2M19 12h2M5.6 18.4 7 17M17 7l1.4-1.4"/><circle cx="12" cy="12" r="4"/>`
+const _MOON = `<path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7z"/>`
+function _applyTheme(t) {
+  _theme = t
+  if (!_shadowRoot) return
+  const css = _shadowRoot.getElementById('sc-theme-css')
+  if (css) css.textContent = t === 'dark' ? (_darkCss ||= darkenCss(_CSS) + DARK_INLINE + _DARK_EXTRA) : ''
+  _shadowRoot.getElementById('sc-panel')?.classList.toggle('sc-dark', t === 'dark')
+  const b = _shadowRoot.getElementById('sc-theme')
+  if (b) {
+    b.innerHTML = _ic(t === 'dark' ? _SUN : _MOON, 15, t === 'dark' ? '#FACC15' : '#475569')
+    b.title = t === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'
+    b.setAttribute('aria-pressed', String(t === 'dark'))
+  }
+}
+let _themeWired = false
+function _setupTheme() {
+  _applyTheme(_theme)
+  getTheme().then(_applyTheme)
+  _shadowRoot?.getElementById('sc-theme')?.addEventListener('click', e => {
+    e.stopPropagation()
+    const next = _theme === 'dark' ? 'light' : 'dark'
+    _applyTheme(next)
+    setThemeSetting(next)
+  })
+  if (!_themeWired) { _themeWired = true; onThemeChange(_applyTheme) }
+}
+/* ── Language: English (main) · हिन्दी · Hinglish — one setting for the panel, popup and apps ── */
+let _langNow = 'en'
+function _applyLang(l) {
+  _langNow = l === 'hi' || l === 'hinglish' ? l : 'en'
+  if (!_shadowRoot) return
+  _shadowRoot.querySelectorAll('#sc-lang button').forEach(b => { const on = b.dataset.lang === _langNow; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)) })
+  _shadowRoot.getElementById('sc-panel')?.setAttribute('lang', _langNow === 'hi' ? 'hi' : 'en')
+  translateTree(_shadowRoot, _langNow)
+}
+let _langWired = false
+function _setupLang() {
+  if (_shadowRoot && !_shadowRoot.__scTr) { _shadowRoot.__scTr = true; attachTranslator(_shadowRoot, () => _langNow) }
+  _applyLang(_langNow)
+  getLang().then(_applyLang)
+  _shadowRoot?.querySelectorAll('#sc-lang button').forEach(b => b.addEventListener('click', e => {
+    e.stopPropagation(); _applyLang(b.dataset.lang); setLang(b.dataset.lang)
+  }))
+  if (!_langWired) { _langWired = true; onLangChange(_applyLang) }
+}
+/** For the phone apps: set the language from outside (their own switch). */
+export function setPanelLang(l) { _applyLang(l) }
+
+/** For the phone apps: set the theme from outside (their own switch). */
+export function setPanelTheme(t) { _applyTheme(t === 'dark' ? 'dark' : 'light') }
+
 /* ═══════════════════════════════════════════════
    PUBLIC API
 ═══════════════════════════════════════════════ */
@@ -143,12 +256,14 @@ export function injectScanButton(productData = null) {
 
   // Attach shadow
   _shadowRoot = host.attachShadow({ mode: 'open' })
-  _shadowRoot.innerHTML = `<style>${_CSS}</style>${_buildHTML(productData)}`
+  _shadowRoot.innerHTML = `<style>${_CSS}</style><style id="sc-theme-css"></style>${_buildHTML(productData)}`
 
   _shadowRoot.getElementById('sc-fab').addEventListener('click', _togglePanel)
   _shadowRoot.getElementById('sc-close').addEventListener('click', _hidePanel)
   _shadowRoot.getElementById('sc-backdrop').addEventListener('click', _hidePanel)
   _setupOptions()
+  _setupTheme()
+  _setupLang()
   // No auto-open: the button itself now shows a quick Trust Score (see setFabQuick).
 }
 
@@ -200,6 +315,27 @@ export function setFabResult(score) {
    SHADOW CSS
 ═══════════════════════════════════════════════ */
 const _CSS = `
+.sc-g{padding:14px 14px 12px}
+.sc-g-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.sc-g-title{font-size:17px;font-weight:800;color:#0F172A;letter-spacing:-.3px}
+.sc-g-pills{display:flex;gap:2px;background:#F1F5F9;border-radius:10px;padding:2px}
+.sc-g-pill{border:0;background:transparent;font:inherit;font-size:11px;font-weight:700;color:#64748B;padding:4px 7px;border-radius:8px;cursor:pointer}
+.sc-g-pill.on{background:#fff;color:#0F172A;box-shadow:0 1px 3px rgba(15,23,42,.12)}
+.sc-g-stats{display:flex;gap:22px;margin:10px 0 6px}
+.sc-g-k{font-size:10.5px;font-weight:700;letter-spacing:.6px;color:#64748B;text-transform:uppercase;display:flex;align-items:center;gap:6px}
+.sc-g-k i{display:inline-block;width:12px;height:2.5px;border-radius:2px}
+.sc-g-v{font-size:20px;font-weight:800;color:#0F172A;letter-spacing:-.4px;margin-top:2px}
+.sc-g-v span{font-size:11px;font-weight:700;letter-spacing:0;margin-left:3px}
+.sc-g-v .dn{color:#2563EB}.sc-g-v .up{color:#0F172A}.sc-g-v .mute{color:#94A3B8;font-weight:600}
+.sc-g-wrap{position:relative}
+.sc-g-tip{position:absolute;pointer-events:none;background:#1E293B;color:#fff;border-radius:10px;padding:8px 10px;box-shadow:0 6px 18px rgba(15,23,42,.25);white-space:nowrap;z-index:2}
+.sc-g-tip-d{font-size:10.5px;font-weight:600;opacity:.85;margin-bottom:4px}
+.sc-g-tip-r{display:flex;gap:14px}
+.sc-g-tip-r b{display:block;font-size:15px;font-weight:800}
+.sc-g-tip-r span{font-size:10px;opacity:.8}
+.sc-g-tip-x{font-size:10.5px;margin-top:5px;opacity:.95}
+.sc-g-tip-x em{font-style:normal;font-weight:800}.sc-g-tip-x .dn{color:#93C5FD}.sc-g-tip-x .up{color:#fff;text-decoration:underline}
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :host { all: initial; }
 /* 2026 redesign — same tokens as the popup and scancart.ai (slate + blue-600, Inter) */
@@ -242,6 +378,12 @@ const _CSS = `
 .sc-ph-badge { margin-left: auto; font-size: 11px; font-weight: 700; color: #2563EB; background: #EFF6FF; border-radius: 999px; padding: 3px 10px; }
 .sc-close { width: 30px; height: 30px; border-radius: 50%; border: 1px solid #E2E8F0; background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 .sc-close:hover { background: #F1F5F9; }
+.sc-ph { justify-content: flex-start; }
+.sc-ph-badge { margin-left: auto; }
+.sc-lang { display: inline-flex; border: 1px solid #E2E8F0; border-radius: 999px; padding: 2px; background: #F1F5F9; flex-shrink: 0; }
+.sc-lang button { border: 0; background: transparent; font: inherit; font-size: 10.5px; font-weight: 800; color: #64748B; padding: 3px 7px; border-radius: 999px; cursor: pointer; line-height: 1.2; }
+.sc-lang button.on { background: #0F172A; color: #fff; }
+#sc-panel[lang="hi"] { font-family: 'ScanCart Inter', 'Inter', 'Noto Sans Devanagari', 'Nirmala UI', 'Mangal', system-ui, sans-serif; }
 
 .sc-pb { flex: 1; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(15,23,42,.15) transparent; }
 
@@ -407,6 +549,8 @@ const _CSS = `
 #sc-panel.sc-inline .sc-pb { overflow: visible; }
 
 /* ── Score strip (quick or full score, same number as the button) ── */
+.sc-share { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border-radius: 999px; border: 1px solid #E2E8F0; background: #fff; color: #334155; font: inherit; font-size: 11.5px; font-weight: 700; cursor: pointer; }
+.sc-share:hover { background: #F1F5F9; }
 .sc-sstrip { margin: 0 14px 10px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .sc-spill { font-size: 12.5px; font-weight: 800; border-radius: 999px; padding: 6px 12px; color: #fff; }
 .sc-ssub { font-size: 11.5px; color: #64748B; font-weight: 600; }
@@ -455,7 +599,9 @@ function _buildHTML(productData) {
     <div id="sc-panel">
       <div class="sc-ph">
         <div class="sc-ph-logo"><img src="${_asset('scancart-logo.png')}" alt="ScanCart.ai"></div>
-        <span class="sc-ph-badge">${(_productData?.platform || 'store').replace(/^./, c => c.toUpperCase())}</span>
+        <span class="sc-ph-badge">${_esc(_productData?.storeName || (_productData?.platform || 'store').replace(/^./, c => c.toUpperCase()))}</span>
+        <div class="sc-lang" id="sc-lang" role="group" aria-label="Language">${LANGS.map(([k, l]) => `<button data-lang="${k}" class="${k === _langNow ? 'on' : ''}" aria-pressed="${k === _langNow}">${k === 'hinglish' ? 'Hing' : l}</button>`).join('')}</div>
+        <button class="sc-close sc-theme-btn" id="sc-theme" aria-label="Dark mode" title="Dark mode"></button>
         <button class="sc-close" id="sc-close">${_ic(P.x, 14, '#94A3B8')}</button>
       </div>
 
@@ -579,23 +725,30 @@ async function _handleOption(option) {
     </div>
   `
 
+  let pinned = null   // step text shown while review pages are read (the rotating steps wait)
   const iv = setInterval(() => {
     si = (si + 1) % steps.length
     const el = _shadowRoot.getElementById('sc-step-txt')
-    if (el) el.textContent = steps[si]
+    if (el) el.textContent = pinned || steps[si]
     _shadowRoot.querySelectorAll('.sc-dot').forEach((d, i) => d.classList.toggle('on', i <= si))
   }, 1400)
 
   try {
+    // Read more reviews first (product page + store review pages + "Customers say"), then scan with all of them
+    if (option !== 'alternatives') {
+      await _gatherReviews(t => { pinned = t; const el = _shadowRoot.getElementById('sc-step-txt'); if (el) el.textContent = t })
+      pinned = null
+    }
     // Alternatives have their own on-demand endpoint so they never slow down or fail a scan
     // Alternatives: the "where to buy" store list works offline, so a failed search still shows it
     const result = option === 'alternatives'
       ? { ...(await fetchAlternatives(_url(), _productData).catch(() => ({ altFailed: true })) || {}), productPrice: _productData?.price || 0 }
       : await analyzeProduct(_url(), _productData)
-    if (option !== 'alternatives') _aiOn = result.aiUsed !== false
+    if (option !== 'alternatives') { _aiOn = result.aiUsed !== false; _withReviews(result) }
     clearInterval(iv)
     if (option === 'alternatives') _alts = { url: _url(), result }
     else _scan = { url: _url(), result }
+    _renderStrip()
     _showResult(cnt, option, result)
   } catch (err) {
     clearInterval(iv)
@@ -615,6 +768,60 @@ async function _handleOption(option) {
   }
 }
 
+// Collect reviews for this page once. In the toolbar popup the page's own content script does it
+// (it has the page and the user's store login); in the Android app there is no page, so it is skipped.
+async function _gatherReviews(onStep) {
+  if (_gathered && _gathered.url === _url()) return
+  let meta = null
+  try {
+    if (!_pageUrl) {
+      const platform = _productData?.platform || detectPlatform() || storeKey(location.hostname)
+      if (platform) meta = await collectReviews(platform, _url(), { onStep, extraTextSelector: SELECTORS[platform]?.reviewTexts, wake: true })   // same as the apps: load reviews that appear on scroll / behind a Reviews tab
+    } else if (_tabId != null && globalThis.chrome?.tabs?.sendMessage) {
+      onStep?.('Reading review pages…')
+      meta = await new Promise(res => {
+        const t = setTimeout(() => res(null), 25000)
+        try { chrome.tabs.sendMessage(_tabId, { type: 'COLLECT_REVIEWS' }, r => { clearTimeout(t); void chrome.runtime.lastError; res(r || null) }) } catch { clearTimeout(t); res(null) }
+      })
+    }
+  } catch { meta = null }
+  _gathered = { url: _url(), meta }
+  if (!meta || !_productData) return
+  const R = meta.reviews || []
+  if (R.length > (_productData.reviewTexts?.length || 0)) {
+    _productData = { ..._productData, reviewTexts: R.map(r => r.text) }
+    const dates = R.map(r => r.date).filter(Boolean)
+    if (dates.length) _productData.reviewDates = dates.slice(0, 60)
+  }
+  const marked = R.filter(r => r.verified != null)
+  if (marked.length) _productData = { ..._productData, verifiedCount: marked.filter(r => r.verified).length, verifiedOf: marked.length }
+}
+
+// Add what was collected to the scan result. If the backend didn't sort reviews into topics
+// (older backend), sort them here with the same rules so the Reviews tab is never empty.
+function _withReviews(result) {
+  const meta = _gathered?.url === _url() ? _gathered.meta : null
+  const texts = _productData?.reviewTexts || []
+  result.reviewMeta = meta ? { read: texts.length, fromPage: meta.fromPage, pagesRead: meta.pagesRead, source: meta.source, note: meta.note, deep: meta.deep } : null
+  result.storeInsights = meta?.storeInsights || (!_pageUrl ? readStoreInsights(document) : null)
+  const backendRead = result.reviewSamples?.checked || 0
+  if (texts.length && (!result.reviewAspects || backendRead < texts.length)) {
+    try {
+      const S = classifyReviews(texts)
+      const labelled = [...S.real.map(r => ({ ...r, label: 'real' })), ...S.fake.map(r => ({ ...r, label: 'fake' })), ...S.unclear.map(r => ({ ...r, label: 'unclear' }))]
+      const cat = result.productCategory || detectCategory(_productData?.productName || '', _productData?.breadcrumb || '')
+      result.reviewSamples = S
+      result.productCategory = cat
+      result.reviewAspects = tagAspects(labelled, cat)
+    } catch {}
+  }
+  if (result.verifiedReviewCount == null && Number.isFinite(_productData?.verifiedCount)) {
+    result.verifiedReviewCount = _productData.verifiedCount
+    result.verifiedReviewOf = _productData.verifiedOf
+  }
+  return result
+}
+
 const TABS = [['summary', 'Overview'], ['reviews', 'Reviews'], ['seller', 'Seller'], ['price', 'Price'], ['alternatives', 'Where to buy']]
 function _tabsHTML(opt) {
   return `<div class="sc-tabs" role="tablist">${TABS.map(([k, l]) => `<button class="sc-tab${k === opt ? ' on' : ''}" role="tab" data-tab="${k}" aria-selected="${k === opt}">${l}</button>`).join('')}</div>`
@@ -631,8 +838,20 @@ function _showResult(cnt, option, result) {
   }))
   if (option === 'alternatives') _setupAltCards()
   cnt.querySelector('.sc-trusted-btn')?.addEventListener('click', e => { e.stopPropagation(); _handleOption('alternatives') })
-  if (option === 'price') _setupWatch()
-  if (option === 'reviews') { _lastReview = result; _setupReviewAspects(cnt) }
+  if (option === 'price') { _setupWatch(); _setupGraph(cnt) }
+  if (option === 'reviews') {
+    _lastReview = result; _setupReviewAspects(cnt)
+    // Switch review pages on/off, then re-scan this page so the counts match the setting
+    // Phone app: sign in on this shop's own site, so its review pages open
+    cnt.querySelector('[data-signin]')?.addEventListener('click', e => { e.stopPropagation(); try { globalThis.App.storeLogin(_url()) } catch {} })
+    cnt.querySelector('[data-deep]')?.addEventListener('click', async e => {
+      e.stopPropagation()
+      await _setDeep(e.currentTarget.dataset.deep === 'on')
+      _scan = null; _gathered = null
+      if (!_pageUrl) { try { const d = quickExtract(); if (d) _productData = d } catch {} }
+      _handleOption('reviews')
+    })
+  }
   // Wire up data-href clicks (price best-found card, etc.) via event delegation
   cnt.querySelectorAll('[data-href]:not(.sc-alt-grid [data-href])').forEach(el => {
     el.addEventListener('click', () => {
@@ -722,10 +941,43 @@ function _reviewCountsHTML(r, S) {
   const ver = r.verifiedReviewCount, verOf = r.verifiedReviewOf
   return `<div class="sc-rc">
     <div class="sc-rc-k">Reviews ScanCart read</div>
-    <div class="sc-rc-big"><b>${n}</b><span>${n ? 'shown on this page' : 'no review text on this page'}${total ? ` · ${total.toLocaleString('en-IN')} ratings in all` : ''}</span></div>
+    <div class="sc-rc-big"><b>${n}</b><span>${n ? `review${n === 1 ? '' : 's'} read` : 'no review text found'}${total ? ` · ${total.toLocaleString('en-IN')} ratings in all` : ''}</span></div>
+    ${_readFromHTML(r.reviewMeta)}
     ${n ? `<div class="sc-rc-split"><i style="width:${pct(S.real.length)}%;background:#16A34A"></i><i style="width:${pct(S.unclear.length)}%;background:#CBD5E1"></i><i style="width:${pct(S.fake.length)}%;background:#DC2626"></i></div>
     <div class="sc-rc-leg"><span><i style="background:#16A34A"></i>${S.real.length} look real</span><span><i style="background:#DC2626"></i>${S.fake.length} look fake</span><span><i style="background:#CBD5E1"></i>${S.unclear.length} can't judge</span></div>` : ''}
     ${ver != null && verOf ? `<div class="sc-rc-sub">${ver} of ${verOf} review${verOf === 1 ? '' : 's'} marked Verified Purchase</div>` : ''}
+  </div>`
+}
+// Where the reviews came from + why not more, and the on/off switch for review pages
+// The switch lives in the extension's storage, so it is the same on the page and in the popup
+async function _setDeep(on) {
+  try { await setDeepReviews(on) } catch {}
+}
+const _storeName = () => ({ amazon: 'Amazon', flipkart: 'Flipkart', myntra: 'Myntra', nykaa: 'Nykaa', meesho: 'Meesho' }[_productData?.platform] || _productData?.storeName || 'this shop')
+function _readFromHTML(M) {
+  if (!M) return ''
+  const from = M.pagesRead ? `${M.fromPage} from this page + ${M.read - M.fromPage} from ${M.pagesRead} review page${M.pagesRead === 1 ? '' : 's'}` : 'from this page only'
+  const signIn = M.note && /sign in/i.test(M.note) && globalThis.App?.storeLogin
+  return `<div class="sc-rc-sub">${from}${M.note ? ` · ${_esc(M.note)}` : ''}</div>
+    ${signIn ? `<button class="sc-rlink" data-signin="1" style="margin:2px 0 0;font-size:12px">Sign in to ${_esc(_storeName())} in ScanCart →</button>` : ''}
+    <button class="sc-rlink" data-deep="${M.deep ? 'off' : 'on'}" style="margin:2px 0 4px;font-size:11px;font-weight:600;color:#64748B">${M.deep ? 'Reading extra review pages: On · turn off' : 'Reading extra review pages: Off · turn on'}</button>`
+}
+// The store's own summary of every review (Amazon "Customers say")
+function _storeInsightsHTML(I) {
+  if (!I || (!I.summary && !I.topics?.length)) return ''
+  const rows = (I.topics || []).map(t => {
+    if (t.mentions) {
+      const mixed = Math.max(0, t.mentions - t.pos - t.neg)
+      return `<div class="sc-asp" style="cursor:default"><div class="sc-asp-l">${_esc(t.label)}</div>${_aspBar({ mentions: t.mentions, pos: t.pos, neg: t.neg, mixed })}<div class="sc-asp-c">${t.pos.toLocaleString('en-IN')} of ${t.mentions.toLocaleString('en-IN')} positive</div></div>`
+    }
+    const c = t.tone === 'neg' ? '#DC2626' : t.tone === 'mixed' ? '#F59E0B' : t.tone === 'pos' ? '#16A34A' : '#64748B'
+    return `<span class="sc-chip" style="display:inline-block;margin:3px 4px 0 0;color:${c};background:${c}18;font-size:11px;padding:3px 8px">${_esc(t.label)}</span>`
+  }).join('')
+  return `<div class="sc-rc">
+    <div class="sc-rc-k">${_esc(I.source)} · all reviews</div>
+    <div class="sc-rc-sub" style="margin:2px 0 4px">The store's own summary of every review. Not checked for fakes.</div>
+    ${I.summary ? `<p class="sc-ai-box-txt" style="margin:4px 0 6px">${_esc(I.summary)}</p>` : ''}
+    ${rows}
   </div>`
 }
 function _reviewResult(r) {
@@ -756,6 +1008,7 @@ function _reviewResult(r) {
     ${r.reviewSpike?.spike ? `<div class="sc-rwarn" style="background:#FEF2F2;color:#B91C1C">⚠ ${_esc(r.reviewSpike.note)}</div>` : ''}
     ${worst ? `<div class="sc-rwarn" style="background:#FFFBEB;color:#B45309">⚠ ${_esc(worst.label)}: ${worst.neg} of ${worst.mentions} buyers unhappy</div>` : ''}
     ${_aspectsHTML(A, S)}
+    ${_storeInsightsHTML(r.storeInsights)}
     ${group('Real reviews — read these', S.real, 'real', !A || !_shownAspects(A).length)}
     ${group('Flagged as fake', S.fake, 'fake', false)}
     ${group('Too short to judge', S.unclear, 'unclear', false)}
@@ -812,10 +1065,10 @@ function _priceResult(r) {
   const bestLabel = hasCheaper ? `₹${best.toLocaleString('en-IN')}` : 'None cheaper'
   const bestSub   = hasCheaper ? `${plat}${platUrl ? ' ↗' : ''}` : 'in ScanCart\'s search'
 
-  const hist = r.priceHistory || _priceInfo
+  const hist = pickHistory(r.priceHistory, _priceInfo) || _priceInfo
   return `
     ${_discountHTML(hist?.discount)}
-    ${_graphHTML(hist?.points, cur)}
+    ${_graphHTML(hist?.points, cur, hist?.source, _productData?.mrpPrice || 0)}
     ${_watchHTML()}
     ${_rHead(P.rupee,'#16A34A','rgba(22,163,74,0.1)','Price check','This price vs similar products',hasCheaper?`SAVE ₹${save.toLocaleString('en-IN')}`:'NO CHEAPER STORE','#16A34A')}
     <div class="sc-price-vs">
@@ -1118,33 +1371,144 @@ function _discountHTML(d) {
   return _verdict(`<b>${head}.</b> <span style="font-weight:500">${d.message}</span>`, lvl)
 }
 
-// Plain SVG line of every price ScanCart has seen for this listing (no smoothing, no guesses)
-function _graphHTML(points, current) {
-  const pts = (points || []).filter(p => p.price > 0)
-  if (pts.length < 2) {
-    return `<div class="sc-graph"><div class="sc-graph-k">Price history</div><p class="sc-watch-note" style="margin-top:6px">${pts.length ? 'First price saved today.' : 'No prices saved yet.'} ScanCart saves the price each time this page is opened, so the graph fills in over the coming days.</p></div>`
+// Price graph, dashboard style: stat row, range pills (7 / 14 / 30 / 90 days), grid with a day axis,
+// blue = price that day, black = lowest price so far; hover / tap shows that day's prices.
+const _INK = '#0F172A', _BLUE = '#2563EB'
+let _gState = null   // { days:[{t, price, low}], cur, mrp, source }
+const _day = (t, o = { day: 'numeric', month: 'short' }) => new Date(t).toLocaleDateString('en-IN', o)
+
+// One value per calendar day: the last price seen that day, days with no visit carry the last price
+function _dailySeries(points) {
+  const pts = (points || []).filter(p => p.price > 0).sort((a, b) => a.t - b.t)
+  if (!pts.length) return []
+  const start = new Date(pts[0].t); start.setHours(0, 0, 0, 0)
+  const end = new Date(); end.setHours(0, 0, 0, 0)
+  const byDay = new Map()
+  pts.forEach(p => { const d = new Date(p.t); d.setHours(0, 0, 0, 0); byDay.set(+d, p.price) })
+  const out = []; let last = null, low = Infinity
+  for (let t = +start; t <= +end; t += 86400e3) {
+    const seen = byDay.has(t)
+    if (seen) last = byDay.get(t)
+    if (last == null) continue
+    low = Math.min(low, last)
+    out.push({ t, price: last, low, seen })
   }
-  const W = 330, H = 90, pad = 6
-  const t0 = pts[0].t, t1 = pts[pts.length - 1].t || t0 + 1
-  const lo = Math.min(...pts.map(p => p.price)), hi = Math.max(...pts.map(p => p.price))
-  const x = (t) => pad + (W - 2 * pad) * ((t - t0) / Math.max(1, t1 - t0))
-  const y = (v) => hi === lo ? H / 2 : pad + (H - 2 * pad) * (1 - (v - lo) / (hi - lo))
-  let d = ''
-  pts.forEach((p, i) => { d += i ? ` H${x(p.t).toFixed(1)} V${y(p.price).toFixed(1)}` : `M${x(p.t).toFixed(1)} ${y(p.price).toFixed(1)}` })  // step line: price holds until it changes
-  const last = pts[pts.length - 1]
-  const day = (t) => new Date(t).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
-  return `<div class="sc-graph">
-    <div class="sc-graph-top"><span class="sc-graph-k">Price history · ${pts.length} prices</span><span style="font-size:12px;font-weight:800">${_rs(current || last.price)}</span></div>
-    <svg width="100%" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="display:block">
-      <line x1="0" x2="${W}" y1="${y(lo)}" y2="${y(lo)}" stroke="#BBF7D0" stroke-dasharray="3 3"/>
-      <path d="${d} H${W - pad}" fill="none" stroke="#2563EB" stroke-width="2.2" stroke-linejoin="round"/>
-      <circle cx="${x(last.t)}" cy="${y(last.price)}" r="3.5" fill="#2563EB"/>
-    </svg>
-    <div class="sc-graph-legend"><span>${day(t0)}</span><span>Low ${_rs(lo)} · High ${_rs(hi)}</span><span>${day(t1)}</span></div>
-  </div>`
+  return out
+}
+
+function _graphHTML(points, current, source, mrp) {
+  const series = _dailySeries(points)
+  const cur = current || series[series.length - 1]?.price || 0
+  _gState = { series, cur, mrp, source, range: Math.min(90, Math.max(7, series.length <= 7 ? 7 : series.length <= 14 ? 14 : series.length <= 30 ? 30 : 90)) }
+  if (!series.length) {
+    return `<div class="sc-graph sc-g"><div class="sc-g-title">Price history</div><p class="sc-watch-note" style="margin-top:6px">No prices saved yet. ScanCart saves the price each time this page is opened, so the graph fills in over the coming days.</p></div>`
+  }
+  return `<div class="sc-graph sc-g" id="sc-g">${_graphInner()}</div>`
+}
+
+function _graphInner() {
+  const { series: all, cur, mrp, source, range } = _gState
+  const since = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return +d - (range - 1) * 86400e3 })()
+  const S = all.filter(p => p.t >= since)
+  const prices = S.map(p => p.price)
+  const lo = Math.min(...prices, cur), hi = Math.max(...prices, cur)
+  const avg = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length)
+  const vsAvg = avg ? Math.round((cur - avg) / avg * 100) : 0
+  const lowDay = S.find(p => p.price === lo)
+  const from = source === 'shared' ? 'Prices seen by ScanCart users' : `Prices seen by you on this ${globalThis.ReactNativeWebView ? 'phone' : 'browser'}`
+  const pill = [7, 14, 30, 90].map(n => `<button class="sc-g-pill${n === range ? ' on' : ''}" data-range="${n}">${n}d</button>`).join('')
+  const arrow = vsAvg < 0 ? '↓' : vsAvg > 0 ? '↑' : '•'
+
+  // chart geometry (fixed scale: text stays sharp)
+  const W = 330, H = 170, L = 40, R = 10, T = 14, B = 24
+  const t0 = since, t1 = Math.max(S[S.length - 1].t, t0 + 86400e3)
+  const step = (() => { const r = (hi - lo) || hi * 0.1 || 10; const raw = r / 4; const m = 10 ** Math.floor(Math.log10(raw)); return [1, 2, 2.5, 5, 10].map(k => k * m).find(k => k >= raw) })()
+  const yMin = Math.max(0, Math.floor(lo / step) * step - (lo % step ? 0 : step)), yMax = Math.ceil(hi / step) * step + (hi % step ? 0 : step)
+  const x = t => L + (W - L - R) * ((t - t0) / (t1 - t0))
+  const y = v => T + (H - T - B) * (1 - (v - yMin) / (yMax - yMin))
+  const line = key => S.map((p, i) => `${i ? 'L' : 'M'}${x(p.t).toFixed(1)} ${y(p[key]).toFixed(1)}`).join(' ')
+  const yt = []; for (let v = yMin; v <= yMax + 0.01; v += step) yt.push(v)
+  const nDays = Math.round((t1 - t0) / 86400e3) + 1
+  const every = nDays <= 8 ? 1 : nDays <= 15 ? 2 : nDays <= 31 ? 5 : 15
+  const xt = []; for (let t = t1; t >= t0 - 1; t -= 86400e3 * every) xt.unshift(t)   // counted back from today, so today is always labelled
+  const fmt = v => v >= 1e5 ? (v / 1e5).toFixed(1).replace(/\.0$/, '') + 'L' : v >= 1e3 ? (v / 1e3).toFixed(v % 1000 ? 1 : 0) + 'k' : String(v)
+  const svg = `<svg class="sc-g-svg" viewBox="0 0 ${W} ${H}" width="100%" style="display:block" role="img" aria-label="Price from ${_day(t0)} to ${_day(t1)}: low ${_rs(lo)}, high ${_rs(hi)}">
+    ${yt.map(v => `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="#E2E8F0"/><text x="${L - 8}" y="${y(v) + 3.5}" text-anchor="end" font-size="10" fill="#94A3B8">${fmt(v)}</text>`).join('')}
+    ${xt.map(t => `<line x1="${x(t)}" x2="${x(t)}" y1="${T}" y2="${H - B}" stroke="#E2E8F0" stroke-dasharray="3 3"/><text x="${x(t)}" y="${H - 7}" text-anchor="middle" font-size="10" fill="#94A3B8">${new Date(t).getDate()}</text>`).join('')}
+    <path d="${line('price')} L${x(S[S.length - 1].t)} ${H - B} L${x(S[0].t)} ${H - B} Z" fill="${_BLUE}" fill-opacity="0.07"/>
+    <path d="${line('low')}" fill="none" stroke="${_INK}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="${line('price')}" fill="none" stroke="${_BLUE}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+    ${S.filter(p => p.seen).map(p => `<circle cx="${x(p.t).toFixed(1)}" cy="${y(p.price).toFixed(1)}" r="2.6" fill="#fff" stroke="${_BLUE}" stroke-width="1.6"/>`).join('')}
+    <g class="sc-g-hover" style="display:none"><line y1="${T}" y2="${H - B}" stroke="${_INK}" stroke-width="1.2"/><rect class="sc-g-dp" width="6" height="6" fill="#fff" stroke="${_BLUE}" stroke-width="1.5"/><rect class="sc-g-dl" width="6" height="6" fill="#fff" stroke="${_INK}" stroke-width="1.5"/><text class="sc-g-dx" text-anchor="middle" font-size="10" font-weight="800" fill="${_INK}" y="${H - 7}"></text></g>
+    <rect class="sc-g-hit" x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/>
+  </svg>`
+  return `
+    <div class="sc-g-head"><div class="sc-g-title">Price history</div><div class="sc-g-pills">${pill}</div></div>
+    <div class="sc-g-stats">
+      <div><div class="sc-g-k">Today <i style="background:${_BLUE}"></i></div><div class="sc-g-v">${_rs(cur)} <span class="${vsAvg <= 0 ? 'dn' : 'up'}">${arrow} ${Math.abs(vsAvg)}% vs avg</span></div></div>
+      <div><div class="sc-g-k">Lowest <i style="background:${_INK}"></i></div><div class="sc-g-v">${_rs(lo)} <span class="mute">${lowDay ? _day(lowDay.t) : ''}</span></div></div>
+    </div>
+    <div class="sc-g-wrap">${svg}<div class="sc-g-tip" style="display:none"></div></div>
+    <div class="sc-rc-sub" style="margin-top:2px">High ${_rs(hi)} · Average ${_rs(avg)}${mrp > cur ? ` · MRP ${_rs(mrp)}` : ''} · ${from}${all.length < 3 ? ' · fills in as you visit on more days' : ''}</div>`
+}
+
+function _setupGraph(cnt) {
+  const box = cnt.querySelector('#sc-g'); if (!box || !_gState?.series?.length) return
+  const wire = () => {
+    box.querySelectorAll('[data-range]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); _gState.range = +b.dataset.range; box.innerHTML = _graphInner(); wire() }))
+    const svg = box.querySelector('.sc-g-svg'), hit = box.querySelector('.sc-g-hit'), g = box.querySelector('.sc-g-hover'), tip = box.querySelector('.sc-g-tip')
+    if (!svg || !hit) return
+    const since = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return +d - (_gState.range - 1) * 86400e3 })()
+    const S = _gState.series.filter(p => p.t >= since)
+    // Map points to screen through the SVG's own coordinates (stays right at any panel width)
+    const pathP = svg.querySelectorAll('path')[2]
+    const move = ev => {
+      const pt = ev.touches?.[0] || ev
+      const r = svg.getBoundingClientRect(), vb = svg.viewBox.baseVal
+      const vx = (pt.clientX - r.left) / r.width * vb.width
+      // nearest day by x
+      const t0 = since, t1 = Math.max(S[S.length - 1].t, t0 + 86400e3), L = 40, R = 10
+      const xOf = t => L + (vb.width - L - R) * ((t - t0) / (t1 - t0))
+      let best = S[0]; for (const p of S) if (Math.abs(xOf(p.t) - vx) < Math.abs(xOf(best.t) - vx)) best = p
+      const segs = pathP.getAttribute('d').split(/[ML]/).filter(Boolean).map(s => s.trim().split(' ').map(Number))
+      const i = S.indexOf(best), [px, py] = segs[i], ly = +svg.querySelectorAll('path')[1].getAttribute('d').split(/[ML]/).filter(Boolean)[i].trim().split(' ')[1]
+      g.style.display = ''
+      g.querySelector('line').setAttribute('x1', px); g.querySelector('line').setAttribute('x2', px)
+      g.querySelector('.sc-g-dp').setAttribute('x', px - 3); g.querySelector('.sc-g-dp').setAttribute('y', py - 3)
+      g.querySelector('.sc-g-dl').setAttribute('x', px - 3); g.querySelector('.sc-g-dl').setAttribute('y', ly - 3)
+      const dx = g.querySelector('.sc-g-dx'); dx.setAttribute('x', px); dx.textContent = new Date(best.t).getDate()
+      // Difference: this date vs the day before and vs today
+      const prev = S[i - 1], today = _gState.cur
+      const diff = (a, b, label) => {
+        const d = a - b
+        if (!d) return `<div class="sc-g-tip-x">= same as ${label}</div>`
+        return `<div class="sc-g-tip-x"><em class="${d < 0 ? 'dn' : 'up'}">${d < 0 ? '↓' : '↑'} ${_rs(Math.abs(d))} (${Math.abs(Math.round(d / b * 100))}%)</em> vs ${label}</div>`
+      }
+      const isToday = i === S.length - 1
+      tip.innerHTML = `<div class="sc-g-tip-d">${_day(best.t, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}${isToday ? ' · today' : best.seen ? '' : ' · no visit, last price'}</div>
+        <div class="sc-g-tip-r"><div><b>${_rs(best.price)}</b><span>Price</span></div><div><b>${_rs(best.low)}</b><span>Lowest so far</span></div></div>
+        ${prev ? diff(best.price, prev.price, _day(prev.t)) : ''}${!isToday ? diff(best.price, today, 'today') : ''}`
+      tip.style.display = ''
+      const left = px / vb.width * r.width, tw = tip.offsetWidth
+      const above = py / vb.height * r.height - tip.offsetHeight - 12
+      if (above >= 0) {   // room above the point: centred over it (like the reference)
+        tip.style.left = Math.max(0, Math.min(r.width - tw, left - tw / 2)) + 'px'
+        tip.style.top = above + 'px'
+      } else {            // no room: beside the line, so it never covers the point
+        tip.style.left = (left + 10 + tw <= r.width ? left + 10 : left - 10 - tw) + 'px'
+        tip.style.top = '4px'
+      }
+    }
+    const out = () => { g.style.display = 'none'; tip.style.display = 'none' }
+    hit.addEventListener('mousemove', move); hit.addEventListener('touchstart', move, { passive: true }); hit.addEventListener('touchmove', move, { passive: true })
+    hit.addEventListener('mouseleave', out)
+  }
+  wire()
 }
 
 function _watchHTML() {
+  // Phone app (Expo): Chrome's background alarms aren't there, so price alerts aren't offered yet
+  if (globalThis.ReactNativeWebView) return ''
   const cur = _productData?.price || 0
   if (!cur) return ''
   const suggest = Math.round(cur * 0.9)
@@ -1154,7 +1518,7 @@ function _watchHTML() {
       <input id="sc-watch-target" type="number" min="1" inputmode="numeric" placeholder="Alert me at (optional)" value="${suggest}">
       <button class="sc-watch-btn" id="sc-watch-add">Watch</button>
     </div>
-    <p class="sc-watch-note" id="sc-watch-note">ScanCart checks this page every 6 hours and sends a Chrome notification when the price drops or reaches your target.</p>
+    <p class="sc-watch-note" id="sc-watch-note">ScanCart checks this page every 6 hours and sends a ${globalThis.App?.notify ? "phone" : "Chrome"} notification when the price drops or reaches your target.</p>
   </div>`
 }
 
@@ -1169,6 +1533,7 @@ async function _setupWatch() {
     note.textContent = `Watching${w.targetPrice ? ` · alert at ${_rs(w.targetPrice)}` : ' · alert on any drop'}. Started at ${_rs(w.startPrice)}.`
     _shadowRoot.getElementById('sc-watch-stop').addEventListener('click', async (e) => {
       e.stopPropagation(); await removeWatch(w.id)
+      try { globalThis.App?.watchesChanged?.() } catch {}
       box.outerHTML = _watchHTML(); _setupWatch()
     })
   }
@@ -1180,6 +1545,7 @@ async function _setupWatch() {
     const btn = e.currentTarget; btn.disabled = true; btn.textContent = 'Saving…'
     try {
       show(await addWatch({ url, productName: _productData?.productName, platform: _productData?.platform, price: _productData?.price, image: _productData?.image }, target))
+      try { globalThis.App?.watchesChanged?.() } catch {}   // Android app: start its 6-hourly price check
     } catch { btn.disabled = false; btn.textContent = 'Try again' }
   })
 }

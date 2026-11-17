@@ -1,10 +1,12 @@
 // src/popup/Popup.jsx
 // State machine: loading → login → ready | not-product → scanning → results
 import { useState, useEffect } from 'react'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Moon, Sun } from 'lucide-react'
 import { useScan } from '../hooks/useScan'
 import { LoginView      } from './views/LoginView'
 import { PanelView      } from './views/PanelView'
+import { useTheme       } from './useTheme'
+import { useLang        } from './useLang'
 import { NotProductView } from './views/NotProductView'
 import { ScanningView   } from './views/ScanningView'
 import { ResultsView    } from './views/ResultsView'
@@ -16,6 +18,8 @@ import logoUrl from '/scancart-logo.png'
 import './Popup.css'
 
 export default function Popup() {
+  const [theme, toggleTheme] = useTheme()
+  const [lang, chooseLang] = useLang()
   const [appState, setAppState] = useState('loading')   // loading | login | ready | scanning | results | watches
   const [prevState, setPrevState] = useState('ready')
   const [platform, setPlatform] = useState(null)
@@ -32,11 +36,16 @@ export default function Popup() {
       try {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
         const plat  = detectPlatformFromUrl(tab?.url || '')
-        setPlatform(plat)
+        const web   = /^https?:/.test(tab?.url || '')
+        // Any online shop: big stores are known by their address; any other site is asked whether it shows a product
+        setPlatform(plat || (web ? 'checking' : null))
         setTabId(tab?.id ?? null)
         setTabUrl(tab?.url || '')
-        if (plat && tab?.id != null) {
-          readProduct(tab.id).then(p => { setProduct(p); setProductRead(true) })
+        if (web && tab?.id != null) {
+          readProduct(tab.id).then(p => {
+            setProduct(p); setProductRead(true)
+            setPlatform(plat || (p && p.productName ? p.platform : null))
+          })
           askTab(tab.id, { type: 'SCANCART_GET_STATUS' }).then(st => st && setStatus(st))
         }
 
@@ -85,7 +94,7 @@ export default function Popup() {
   const openSite = path => chrome.tabs.create({ url: `${WEBSITE_URL}${path}` })
   const handleReset = () => { reset(); setAppState('ready') }
 
-  const platformName = PLATFORM_NAMES[platform] || null
+  const platformName = PLATFORM_NAMES[platform] || (platform && platform !== 'checking' ? (product?.storeName || platform[0].toUpperCase() + platform.slice(1)) : null)
 
   return (
     <div className="sc-popup">
@@ -98,6 +107,10 @@ export default function Popup() {
             {platformName && appState !== 'login' && (
               <span className="sc-pill blue">{platformName}</span>
             )}
+            <div className="sc-lang" role="group" aria-label="Language">
+              {[['en', 'EN'], ['hi', 'हि'], ['hinglish', 'Hing']].map(([k, l]) => <button key={k} className={k === lang ? 'on' : ''} aria-pressed={k === lang} onClick={() => chooseLang(k)}>{l}</button>)}
+            </div>
+            <button className="sc-icon-btn" title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} aria-label="Dark mode" aria-pressed={theme === 'dark'} onClick={toggleTheme}>{theme === 'dark' ? <Sun size={15} color="#FACC15" /> : <Moon size={15} />}</button>
             {appState !== 'watches' && appState !== 'scanning' && (
               <button className="sc-icon-btn" title="Price watches" aria-label="Price watches" onClick={() => { setPrevState(appState); setAppState('watches') }}><Bell size={15} /></button>
             )}

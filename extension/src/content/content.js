@@ -1,7 +1,11 @@
 // src/content/content.js
 
 import { MESSAGE_TYPES, STORAGE_KEYS, WEBSITE_ORIGINS } from "../utils/constants";
-import { getScanner, isProductPage } from "./scanner";
+import { getScanner, looksLikeProduct } from "./scanner";
+import { collectReviews } from "./reviewCollector";
+import { storeKey } from "./genericReader";
+import { recordLocalPrice, localInfo, pickHistory } from "../services/localPriceHistory";
+import { SELECTORS, detectPlatform } from "../utils/selectors";
 import {
   injectScanButton,
   removeScanButton,
@@ -65,6 +69,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       break;
     }
 
+    // Toolbar popup asks the page to collect reviews (product page + store review pages)
+    case 'COLLECT_REVIEWS': {
+      const scanner = getScanner();
+      const platform = scanner.platform || detectPlatform() || storeKey(location.hostname);
+      collectReviews(platform, window.location.href, { extraTextSelector: SELECTORS[platform]?.reviewTexts, wake: true })
+        .then(sendResponse).catch(() => sendResponse(null));
+      return true;
+    }
+
     // Toolbar popup asks what the page already knows (quick / full score)
     case MESSAGE_TYPES.GET_STATUS:
       sendResponse(getPageStatus());
@@ -85,9 +98,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 /* ---------------- INIT ---------------- */
 
-function initScanner() {
-  if (!isProductPage()) {
+// Any online shop: a big store's product page, or any page that shows a product (product data for
+// Google, or a title + ₹ price + Buy button). Shops that build the page late get two more looks.
+let lookTimer = null;
+function initScanner(look = 0) {
+  if (isWebsite) return;
+  clearTimeout(lookTimer);
+  if (!looksLikeProduct()) {
     removeScanButton();
+    if (look < 2) lookTimer = setTimeout(() => initScanner(look + 1), look ? 4000 : 1800);
     return;
   }
 
@@ -127,10 +146,15 @@ async function pageLoadChecks(scanner, attempt = 0) {
   const settings = (await chrome.storage.local.get("scancart_settings")).scancart_settings || {};
   const productData = { ...data };
 
+  // Price history: saved in this browser first (always works), then the shared backend history;
+  // the Price tab shows whichever has seen more prices.
+  const priceIn = { price: data.price, mrp: data.mrpPrice || 0 };
+  const local = await recordLocalPrice(url, { ...priceIn, name: data.productName }).then((pts) => localInfo(pts, priceIn)).catch(() => null);
+  if (local) setPriceInfo(local);
   callBackend("/api/price/observe", {
     url,
     productData: { productName: data.productName, price: data.price, mrpPrice: data.mrpPrice || undefined, platform: data.platform },
-  }, 8000).then((r) => setPriceInfo(r)).catch(() => {});
+  }, 8000).then((r) => setPriceInfo(pickHistory(r, local))).catch(() => {});
 
   if (settings.autoBadge === false) return;
   setFabChecking();
@@ -146,7 +170,7 @@ async function pageLoadChecks(scanner, attempt = 0) {
 /* ---------------- PAGE LOAD ---------------- */
 
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", initScanner);
+  document.addEventListener("DOMContentLoaded", () => initScanner());
 } else {
   initScanner();
 }
